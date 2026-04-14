@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { ocrReceiptFile } from "./ocrReceipt.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SCHEDULE_C = [
@@ -523,12 +524,33 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
   const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null });
   const [viewRcpt, setViewRcpt] = useState(false);
+  const [scan, setScan] = useState({ busy: false, pct: 0, status: "", error: "" });
   const attachRef = useRef();
   const attachReceipt = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setF((prev) => ({ ...prev, receiptFile: { data: reader.result.split(",")[1], mimeType: file.type, filename: file.name } }));
     reader.readAsDataURL(file); e.target.value = "";
+    setScan({ busy: false, pct: 0, status: "", error: "" });
+  };
+  const scanReceipt = async () => {
+    if (!f.receiptFile || scan.busy) return;
+    setScan({ busy: true, pct: 0, status: "Starting…", error: "" });
+    try {
+      const result = await ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
+        setScan(s => ({ ...s, status, pct }));
+      });
+      setF(prev => ({
+        ...prev,
+        ...(result.date && { date: result.date }),
+        ...(result.amount && { amount: String(result.amount) }),
+        ...(result.vendor && !prev.vendor && { vendor: result.vendor }),
+        ...(result.description && !prev.description && { description: result.description }),
+      }));
+      setScan({ busy: false, pct: 1, status: "Done", error: "" });
+    } catch (err) {
+      setScan({ busy: false, pct: 0, status: "", error: err.message || "OCR failed" });
+    }
   };
   return <Modal title={`${editId ? "Edit" : "Add"} ${type === "income" ? "Income" : "Expense"}`} onClose={onClose}>
     {prefill.receiptData && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", background: "rgba(34,197,94,.1)", color: "#4ade80", fontSize: 13, fontWeight: 500, borderRadius: 8, marginBottom: 16 }}><I name="check" size={16} />Receipt scanned — confirm details.</div>}
@@ -544,10 +566,27 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
       <Field label="Receipt / Document" span>
         <input ref={attachRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={attachReceipt} />
         {f.receiptFile
-          ? <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "rgba(96,165,250,.08)", border: "1px solid #1d4ed8", borderRadius: 8, fontSize: 13 }}>
-              <span>📎 {f.receiptFile.filename}</span>
-              <button onClick={() => setViewRcpt(true)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 12, textDecoration: "underline" }}>view</button>
-              <button onClick={() => setF({ ...f, receiptFile: null })} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12, marginLeft: "auto" }}>remove</button>
+          ? <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "rgba(96,165,250,.08)", border: "1px solid #1d4ed8", borderRadius: 8, fontSize: 13 }}>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {f.receiptFile.filename}</span>
+                <button onClick={() => setViewRcpt(true)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 12, textDecoration: "underline", whiteSpace: "nowrap" }}>view</button>
+                <button onClick={() => { setF({ ...f, receiptFile: null }); setScan({ busy: false, pct: 0, status: "", error: "" }); }} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>remove</button>
+              </div>
+              {scan.busy
+                ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{scan.status}</div>
+                    <div style={{ height: 4, background: "#1e293b", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.round(scan.pct * 100)}%`, background: "#6366f1", borderRadius: 4, transition: "width .3s" }} />
+                    </div>
+                  </div>
+                : <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button onClick={scanReceipt} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+                      🔍 Scan &amp; Auto-fill
+                    </button>
+                    {scan.status === "Done" && <span style={{ fontSize: 12, color: "#4ade80" }}>✓ Fields filled from receipt</span>}
+                    {scan.error && <span style={{ fontSize: 12, color: "#f87171" }}>⚠ {scan.error}</span>}
+                  </div>
+              }
             </div>
           : <button onClick={() => attachRef.current?.click()} style={{ ...inp, textAlign: "left", cursor: "pointer", color: "#64748b", background: "transparent", border: "1px dashed #334155" }}>📎 Attach image or PDF receipt…</button>
         }
