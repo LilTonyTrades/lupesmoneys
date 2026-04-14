@@ -78,7 +78,8 @@
     "publish": {
       "provider": "github",
       "owner": "LilTonyTrades",
-      "repo": "lupesmoneys"
+      "repo": "lupesmoneys",
+      "releaseType": "release"
     }
   }
 }
