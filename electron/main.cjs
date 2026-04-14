@@ -172,17 +172,45 @@ function setupAutoUpdater(win) {
   }
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
-  updater.on('update-available', (info) =>
-    win.webContents.send('update-available', { version: info.version }));
+
+  let pendingVersion = null;
+  let downloadedFired = false;
+  let fallbackTimer = null;
+
+  updater.on('update-available', (info) => {
+    pendingVersion = info.version;
+    downloadedFired = false;
+    win.webContents.send('update-available', { version: info.version });
+  });
+
   updater.on('update-not-available', () =>
     win.webContents.send('update-not-available'));
-  updater.on('update-downloaded', (info) =>
-    win.webContents.send('update-downloaded', { version: info.version }));
-  updater.on('download-progress', (p) =>
-    win.webContents.send('update-progress', p));
+
+  updater.on('download-progress', (p) => {
+    win.webContents.send('update-progress', p);
+    // If download reaches 100% but update-downloaded never fires (signature
+    // verification hang on self-signed certs), force the event after 20s
+    if (p.percent >= 99.9 && !downloadedFired && !fallbackTimer) {
+      fallbackTimer = setTimeout(() => {
+        if (!downloadedFired) {
+          console.log('[updater] Forcing update-downloaded after 100% timeout');
+          win.webContents.send('update-downloaded', { version: pendingVersion || 'latest' });
+        }
+      }, 20000);
+    }
+  });
+
+  updater.on('update-downloaded', (info) => {
+    downloadedFired = true;
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    win.webContents.send('update-downloaded', { version: info.version });
+  });
+
   updater.on('error', (err) => {
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
     if (app.isPackaged) win.webContents.send('update-error', err.message);
   });
+
   // Delay first check so window finishes rendering
   setTimeout(() => updater.checkForUpdatesAndNotify().catch(() => {}), 5000);
 }

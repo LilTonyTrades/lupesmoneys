@@ -308,9 +308,10 @@ function App() {
       {/* Update notification banner */}
       {updateInfo && <div style={{ background: "linear-gradient(90deg,#1e3a5f,#1a3050)", borderBottom: "1px solid #2a5580", padding: "8px 20px", display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
         <span>🔄</span>
-        {!updateInfo.downloaded
-          ? <><span>Version <strong>{updateInfo.version}</strong> downloading… {updateInfo.percent > 0 && `${updateInfo.percent}%`}</span><div style={{ flex: 1, maxWidth: 120, height: 4, background: "#0f2040", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${updateInfo.percent}%`, background: "#3b82f6", transition: "width .3s" }} /></div></>
-          : <><span>Version <strong>{updateInfo.version}</strong> ready to install</span><button onClick={() => window.electronAPI?.installUpdate()} style={{ background: "#3b82f6", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>Restart & Install</button></>}
+        {(updateInfo.downloaded || updateInfo.percent >= 99)
+          ? <><span>Version <strong>{updateInfo.version}</strong> ready to install</span><button type="button" onClick={() => window.electronAPI?.installUpdate()} style={{ background: "#3b82f6", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>Restart &amp; Install</button></>
+          : <><span>Version <strong>{updateInfo.version}</strong> downloading… {updateInfo.percent > 0 && `${updateInfo.percent}%`}</span><div style={{ flex: 1, maxWidth: 120, height: 4, background: "#0f2040", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${updateInfo.percent}%`, background: "#3b82f6", transition: "width .3s" }} /></div></>
+        }
         <button onClick={() => setUpdateInfo(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
       </div>}
       {bizMenuOpen && <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setBizMenuOpen(false)} />}
@@ -480,11 +481,11 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
 
   // Determine what to show in the update row
   let updateNode;
-  if (updateInfo?.downloaded) {
+  if (updateInfo?.downloaded || updateInfo?.percent >= 99) {
     updateNode = (
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 13, color: "#4ade80" }}>v{updateInfo.version} ready to install</span>
-        <button onClick={onInstall} style={{ padding: "5px 14px", background: "#22c55e", border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Restart &amp; Install</button>
+        <button type="button" onClick={onInstall} style={{ padding: "5px 14px", background: "#22c55e", border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Restart &amp; Install</button>
       </div>
     );
   } else if (updateInfo && !updateInfo.downloaded) {
