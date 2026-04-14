@@ -166,7 +166,10 @@ function createMenu() {
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('install-update', () => {
-  try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (_) {}
+  try {
+    app.isQuitting = true;
+    require('electron-updater').autoUpdater.quitAndInstall();
+  } catch (_) {}
 });
 ipcMain.on('check-for-update', () => {
   try { require('electron-updater').autoUpdater.checkForUpdates().catch(() => {}); } catch (_) {}
