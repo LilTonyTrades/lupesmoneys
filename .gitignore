@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+public/icon.ico
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.exe
