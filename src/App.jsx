@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ocrReceiptFile } from "./ocrReceipt.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -116,7 +116,48 @@ function Badge({ children, color = "#3b82f6" }) { return <span style={{ display:
 function PBar({ value, max, color = "#3b82f6" }) { const p = max > 0 ? Math.min((value / max) * 100, 100) : 0; return <div style={{ height: 6, background: "rgba(255,255,255,.06)", borderRadius: 3, overflow: "hidden" }}><div style={{ height: "100%", width: `${p}%`, background: `linear-gradient(90deg,${color},${color}cc)`, borderRadius: 3, transition: "width .4s" }} /></div>; }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function App() {
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err) { return { error: err }; }
+  componentDidCatch(err, info) { console.error('[ErrorBoundary] Render crash:', err, info.componentStack); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const msg = this.state.error?.message || String(this.state.error);
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f0f1a", padding: 32 }}>
+        <div style={{ maxWidth: 520, width: "100%", background: "#1e293b", borderRadius: 16, border: "1px solid rgba(239,68,68,.3)", padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>💥</div>
+          <h2 style={{ color: "#f87171", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Something crashed</h2>
+          <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>An unexpected error caused the app to stop rendering. Your data is safe.</p>
+          <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#fca5a5", fontFamily: "'JetBrains Mono',monospace", textAlign: "left", marginBottom: 24, wordBreak: "break-word" }}>{msg}</div>
+          <button onClick={() => this.setState({ error: null })} style={{ padding: "8px 24px", background: "#3b82f6", border: "none", borderRadius: 8, color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 14, marginRight: 10 }}>Try Again</button>
+          <button onClick={() => window.location.reload()} style={{ padding: "8px 24px", background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, cursor: "pointer", fontSize: 14 }}>Reload App</button>
+        </div>
+      </div>
+    );
+  }
+}
+
+// ─── ERROR TOAST ──────────────────────────────────────────────────────────────
+function ErrorToast({ message, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 10000);
+    return () => clearTimeout(t);
+  }, [message, onDismiss]);
+  return (
+    <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 18px", background: "#1e1e2e", border: "1px solid rgba(239,68,68,.5)", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,.6)", maxWidth: 500, width: "calc(100vw - 40px)" }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#f87171", marginBottom: 2 }}>Unexpected Error</div>
+        <div style={{ fontSize: 12, color: "#94a3b8", wordBreak: "break-word" }}>{message}</div>
+      </div>
+      <button type="button" onClick={onDismiss} style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1, flexShrink: 0, padding: 0 }}>×</button>
+    </div>
+  );
+}
+
+function App() {
   const [businesses, setBusinesses] = useState([]);
   const [bizId, setBizId] = useState(null);
   const [txns, setTxns] = useState([]);
@@ -134,6 +175,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [checkStatus, setCheckStatus] = useState("idle"); // idle | checking | up-to-date | error
   const [appVersion, setAppVersion] = useState("");
+  const [globalError, setGlobalError] = useState(null);
 
   const reload = useCallback(async () => {
     const [b, t, m, i, c, g] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals")]);
@@ -147,6 +189,27 @@ export default function App() {
     setLoading(false);
   }, [bizId]);
   useEffect(() => { reload(); }, [reload]);
+
+  // Global error handlers — catch unhandled JS errors and promise rejections
+  useEffect(() => {
+    const onError = (e) => {
+      const msg = e.error?.message || e.message || 'An unexpected error occurred';
+      console.error('[GlobalError]', msg, e.error);
+      setGlobalError(msg);
+    };
+    const onUnhandled = (e) => {
+      const msg = e.reason?.message || String(e.reason) || 'Unhandled async error';
+      console.error('[UnhandledRejection]', msg, e.reason);
+      setGlobalError(msg);
+      e.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onUnhandled);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onUnhandled);
+    };
+  }, []);
 
   // Auto-updater events via preload
   useEffect(() => {
@@ -290,9 +353,15 @@ export default function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
+      {globalError && <ErrorToast message={globalError} onDismiss={() => setGlobalError(null)} />}
     </div>
   );
 }
+
+// Wrap with ErrorBoundary so render crashes show a recovery screen
+const _AppWithBoundary = () => <ErrorBoundary><App /></ErrorBoundary>;
+// Re-export as default so index.jsx still works
+export { _AppWithBoundary as default };
 
 // ─── ONBOARDING ──────────────────────────────────────────────────────────────
 function Onboarding({ onDone }) {
@@ -629,10 +698,17 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
     if (scan.busy) { console.warn('[App] Scan already in progress — aborting'); return; }
     setScan({ busy: true, pct: 0, status: "Starting…", error: "" });
     try {
-      const result = await ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
-        console.log('[App] OCR progress:', status, Math.round(pct * 100) + '%');
-        setScan(s => ({ ...s, status, pct }));
-      });
+      const OCR_TIMEOUT_MS = 90_000;
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Scan timed out after 90s — try a clearer or smaller image')), OCR_TIMEOUT_MS)
+      );
+      const result = await Promise.race([
+        ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
+          console.log('[App] OCR progress:', status, Math.round(pct * 100) + '%');
+          setScan(s => ({ ...s, status, pct }));
+        }),
+        timeoutPromise,
+      ]);
       console.log('[App] OCR result:', result);
       setF(prev => ({
         ...prev,
