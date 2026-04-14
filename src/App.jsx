@@ -1,3 +1,12 @@
+// Polyfill Promise.try — not available in Electron 28 / Chromium < 130
+if (!Promise.try) {
+  Promise.try = function(fn) {
+    return new Promise((resolve, reject) => {
+      try { resolve(fn()); } catch (e) { reject(e); }
+    });
+  };
+}
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ocrReceiptFile } from "./ocrReceipt.js";
 

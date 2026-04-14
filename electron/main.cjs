@@ -1,3 +1,12 @@
+// Polyfill Promise.try for dependencies that use it (not available in Node < 22)
+if (!Promise.try) {
+  Promise.try = function(fn) {
+    return new Promise((resolve, reject) => {
+      try { resolve(fn()); } catch (e) { reject(e); }
+    });
+  };
+}
+
 const { app, BrowserWindow, Menu, Tray, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 
