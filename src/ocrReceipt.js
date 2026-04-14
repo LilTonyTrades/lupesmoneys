@@ -102,8 +102,9 @@ function parseReceiptText(text) {
 
   // ── Vendor ──────────────────────────────────────────────────────────────────
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  // Generic document-type words that are never a vendor name
-  const genericDocWords = /^(receipt|invoice|statement|bill|order|confirmation|payment|purchase|transaction|summary|quote|estimate)s?$/i;
+  // Generic document-type words that are never a vendor name.
+  // Match even when followed by noise chars (e.g. "Receipt <", "Invoice #001")
+  const genericDocWordRe = /^(receipt|invoice|statement|bill|order|confirmation|payment|purchase|transaction|summary|quote|estimate)s?\b/i;
   let vendor = '';
 
   // Pass 1: first non-noise line in top 8, skipping generic doc words
@@ -114,8 +115,8 @@ function parseReceiptText(text) {
     if (/\$/.test(line)) continue;
     if (/\d{4}[-\/]\d{2}/.test(line)) continue;
     if (line.length < 2) continue;
-    if (genericDocWords.test(line)) continue;
-    // Skip lines that are just symbols / OCR noise (no letters)
+    if (genericDocWordRe.test(line)) continue;
+    // Skip lines that are just symbols / OCR noise (no real letters)
     if (!/[a-zA-Z]{2}/.test(line)) continue;
     vendor = line.slice(0, 60);
     break;
