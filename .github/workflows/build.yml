@@ -45,4 +45,6 @@ jobs:
       - name: Build & publish Electron installer
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npx electron-builder --win --x64 --publish always
