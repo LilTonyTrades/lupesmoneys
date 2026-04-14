@@ -131,6 +131,9 @@ export default function App() {
   const [searchQ, setSearchQ] = useState("");
   const [bizMenuOpen, setBizMenuOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);       // { version, downloaded, percent }
+  const [showSettings, setShowSettings] = useState(false);
+  const [checkStatus, setCheckStatus] = useState("idle"); // idle | checking | up-to-date | error
+  const [appVersion, setAppVersion] = useState("");
 
   const reload = useCallback(async () => {
     const [b, t, m, i, c, g] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals")]);
@@ -148,9 +151,12 @@ export default function App() {
   // Auto-updater events via preload
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onUpdateAvailable((info) => setUpdateInfo({ version: info.version, downloaded: false, percent: 0 }));
+    window.electronAPI.getAppVersion().then(setAppVersion).catch(() => {});
+    window.electronAPI.onUpdateAvailable((info) => { setUpdateInfo({ version: info.version, downloaded: false, percent: 0 }); setCheckStatus("idle"); });
+    window.electronAPI.onUpdateNotAvailable(() => setCheckStatus("up-to-date"));
     window.electronAPI.onUpdateDownloaded((info) => setUpdateInfo((u) => ({ ...u, version: info.version, downloaded: true })));
     window.electronAPI.onUpdateProgress((p) => setUpdateInfo((u) => u ? { ...u, percent: Math.round(p.percent) } : u));
+    window.electronAPI.onUpdateError(() => setCheckStatus((s) => s === "checking" ? "error" : s));
     return () => window.electronAPI.removeUpdateListeners();
   }, []);
 
@@ -229,6 +235,10 @@ export default function App() {
             </div>
             <input placeholder="Search..." value={searchQ} onChange={(e) => setSearchQ(e.target.value)} style={{ ...inp, width: 130, paddingLeft: 8, fontSize: 12, background: "#111827" }} />
             <select value={year} onChange={(e) => setYear(+e.target.value)} style={{ ...inp, width: 80, fontSize: 12, background: "#111827", cursor: "pointer" }}>{years.map((y) => <option key={y}>{y}</option>)}</select>
+            <button onClick={() => setShowSettings(true)} title="Settings" style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, border: "1px solid #334155", background: "rgba(30,41,59,.8)", color: "#94a3b8", cursor: "pointer" }}>
+              <I name="settings" size={16} />
+              {updateInfo?.downloaded && <span style={{ position: "absolute", top: 4, right: 4, width: 7, height: 7, borderRadius: "50%", background: "#22c55e", border: "2px solid #0f0f1a" }} />}
+            </button>
           </div>
         </div>
       </header>
@@ -266,6 +276,20 @@ export default function App() {
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz" && <BizForm {...modal.d} onSave={async (b) => { await put("businesses", b); if (!bizId) setBizId(b.id); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz-manage" && <BizManage businesses={businesses} currentId={bizId} onSwitch={(id) => { setBizId(id); close(); setView("dashboard"); }} onEdit={(b) => { close(); setTimeout(() => setModal({ t: "biz", d: { ...b, editId: b.id } }), 50); }} onDelete={async (id) => { await del("businesses", id); if (bizId === id) { const r = businesses.filter((b) => b.id !== id); setBizId(r[0]?.id || null); } reload(); close(); }} onClose={close} />}
+      {showSettings && (
+        <SettingsModal
+          appVersion={appVersion}
+          updateInfo={updateInfo}
+          checkStatus={checkStatus}
+          onCheckForUpdate={() => {
+            if (!window.electronAPI) return;
+            setCheckStatus("checking");
+            window.electronAPI.checkForUpdate();
+          }}
+          onInstall={() => window.electronAPI?.installUpdate()}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }
@@ -378,6 +402,70 @@ function Dash({ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInv
       </div>
     </div>
   </div>;
+}
+
+// ─── SETTINGS MODAL ──────────────────────────────────────────────────────────
+function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, onInstall, onClose }) {
+  const row = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid rgba(255,255,255,.06)" };
+  const sectionLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, marginTop: 18 };
+
+  // Determine what to show in the update row
+  let updateNode;
+  if (updateInfo?.downloaded) {
+    updateNode = (
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#4ade80" }}>v{updateInfo.version} ready to install</span>
+        <button onClick={onInstall} style={{ padding: "5px 14px", background: "#22c55e", border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Restart &amp; Install</button>
+      </div>
+    );
+  } else if (updateInfo && !updateInfo.downloaded) {
+    updateNode = (
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#94a3b8" }}>Downloading v{updateInfo.version}… {updateInfo.percent > 0 ? `${updateInfo.percent}%` : ""}</span>
+        <div style={{ width: 80, height: 4, background: "#1e293b", borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${updateInfo.percent}%`, background: "#3b82f6", transition: "width .3s" }} />
+        </div>
+      </div>
+    );
+  } else if (checkStatus === "checking") {
+    updateNode = <span style={{ fontSize: 13, color: "#94a3b8" }}>Checking…</span>;
+  } else if (checkStatus === "up-to-date") {
+    updateNode = <span style={{ fontSize: 13, color: "#4ade80" }}>✓ You're up to date</span>;
+  } else if (checkStatus === "error") {
+    updateNode = <span style={{ fontSize: 13, color: "#f87171" }}>⚠ Could not reach update server</span>;
+  } else {
+    updateNode = (
+      <button onClick={onCheckForUpdate} style={{ padding: "5px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
+        Check for Updates
+      </button>
+    );
+  }
+
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <div style={{ minWidth: 380 }}>
+        {/* App info */}
+        <div style={sectionLabel}>Application</div>
+        <div style={row}>
+          <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500 }}>OpenClaw Books</span>
+          <span style={{ fontSize: 12, color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>v{appVersion || "—"}</span>
+        </div>
+        <div style={{ ...row, borderBottom: "none" }}>
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>Data storage</span>
+          <span style={{ fontSize: 12, color: "#64748b" }}>Local — IndexedDB</span>
+        </div>
+
+        {/* Updates */}
+        <div style={sectionLabel}>Updates</div>
+        <div style={{ ...row, borderBottom: "none", flexWrap: "wrap", gap: 10 }}>
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>
+            {updateInfo?.downloaded ? "Update ready" : updateInfo ? "Downloading update" : checkStatus === "up-to-date" ? "Status" : "Check for a newer version"}
+          </span>
+          {updateNode}
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 // ─── TXN LIST ────────────────────────────────────────────────────────────────

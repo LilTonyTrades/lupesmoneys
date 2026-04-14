@@ -149,6 +149,9 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('install-update', () => {
   try { require('electron-updater').autoUpdater.quitAndInstall(); } catch (_) {}
 });
+ipcMain.on('check-for-update', () => {
+  try { require('electron-updater').autoUpdater.checkForUpdates().catch(() => {}); } catch (_) {}
+});
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 function setupAutoUpdater(win) {
@@ -161,6 +164,8 @@ function setupAutoUpdater(win) {
   updater.autoInstallOnAppQuit = true;
   updater.on('update-available', (info) =>
     win.webContents.send('update-available', { version: info.version }));
+  updater.on('update-not-available', () =>
+    win.webContents.send('update-not-available'));
   updater.on('update-downloaded', (info) =>
     win.webContents.send('update-downloaded', { version: info.version }));
   updater.on('download-progress', (p) =>
