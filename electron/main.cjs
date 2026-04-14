@@ -86,6 +86,7 @@ function createTray() {
         label: 'Quit',
         click: () => {
           app.isQuitting = true;
+          if (mainWindow) mainWindow.destroy();
           app.quit();
         },
       },
@@ -199,7 +200,8 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // On Windows/Linux, quit when all windows are closed and we're not hiding to tray
+  if (process.platform !== 'darwin' && app.isQuitting) app.quit();
 });
 
 app.on('before-quit', () => {

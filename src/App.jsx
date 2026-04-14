@@ -498,15 +498,16 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
     );
   } else if (checkStatus === "checking") {
     updateNode = <span style={{ fontSize: 13, color: "#94a3b8" }}>Checking…</span>;
-  } else if (checkStatus === "up-to-date") {
-    updateNode = <span style={{ fontSize: 13, color: "#4ade80" }}>✓ You're up to date</span>;
-  } else if (checkStatus === "error") {
-    updateNode = <span style={{ fontSize: 13, color: "#f87171" }}>⚠ Could not reach update server</span>;
   } else {
+    // idle / up-to-date / error — always show the button, with a status badge beside it
     updateNode = (
-      <button onClick={onCheckForUpdate} style={{ padding: "5px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", fontWeight: 500, fontSize: 13, cursor: "pointer" }}>
-        Check for Updates
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button type="button" onClick={onCheckForUpdate} style={{ padding: "5px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", fontWeight: 500, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+          Check for Updates
+        </button>
+        {checkStatus === "up-to-date" && <span style={{ fontSize: 12, color: "#4ade80" }}>✓ You're up to date</span>}
+        {checkStatus === "error" && <span style={{ fontSize: 12, color: "#f87171" }}>⚠ Could not reach update server</span>}
+      </div>
     );
   }
 
