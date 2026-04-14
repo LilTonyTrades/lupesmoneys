@@ -6,11 +6,19 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Point PDF.js at its bundled worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+// Resolve the PDF.js worker URL. In a packaged Electron app the worker file
+// sits inside an ASAR archive which web workers cannot read directly, so we
+// redirect to the unpacked copy that electron-builder places alongside the ASAR.
+let _workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).href;
+
+if (_workerSrc.includes('app.asar/')) {
+  _workerSrc = _workerSrc.replace('app.asar/', 'app.asar.unpacked/');
+}
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = _workerSrc;
 
 console.log('[OCR] Module loaded. PDF worker src:', pdfjsLib.GlobalWorkerOptions.workerSrc);
 

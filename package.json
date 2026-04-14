@@ -41,6 +41,9 @@
       "electron/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "dist/assets/pdf.worker*"
+    ],
     "extraResources": [
       {
         "from": "public/",
