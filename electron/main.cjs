@@ -163,19 +163,41 @@ function createMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// ── Auto-updater ──────────────────────────────────────────────────────────────
+// Saved when the real update-downloaded event fires; used to launch the
+// installer directly instead of relying on quitAndInstall() internal state.
+let _downloadedInstallerPath = null;
+
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('install-update', () => {
-  try {
-    app.isQuitting = true;
-    require('electron-updater').autoUpdater.quitAndInstall();
-  } catch (_) {}
+  app.isQuitting = true;
+
+  if (_downloadedInstallerPath) {
+    // Best path: launch the installer file directly, then quit.
+    // This works even when quitAndInstall() fails due to self-signed cert
+    // verification hanging and leaving the updater's internal state unset.
+    console.log('[updater] Launching installer directly:', _downloadedInstallerPath);
+    const { spawn } = require('child_process');
+    spawn(_downloadedInstallerPath, [], { detached: true, stdio: 'ignore' }).unref();
+    if (mainWindow) mainWindow.destroy();
+    app.quit();
+  } else {
+    // Fallback: try the standard quitAndInstall path.
+    try {
+      require('electron-updater').autoUpdater.quitAndInstall(false, true);
+    } catch (e) {
+      console.error('[updater] quitAndInstall failed:', e.message);
+      // Last resort: just quit — autoInstallOnAppQuit may still handle it.
+      if (mainWindow) mainWindow.destroy();
+      app.quit();
+    }
+  }
 });
 ipcMain.on('check-for-update', () => {
   try { require('electron-updater').autoUpdater.checkForUpdates().catch(() => {}); } catch (_) {}
 });
 
-// ── Auto-updater ──────────────────────────────────────────────────────────────
 function setupAutoUpdater(win) {
   let updater;
   try { updater = require('electron-updater').autoUpdater; } catch (_) {
@@ -192,6 +214,7 @@ function setupAutoUpdater(win) {
   updater.on('update-available', (info) => {
     pendingVersion = info.version;
     downloadedFired = false;
+    _downloadedInstallerPath = null;
     win.webContents.send('update-available', { version: info.version });
   });
 
@@ -215,6 +238,11 @@ function setupAutoUpdater(win) {
   updater.on('update-downloaded', (info) => {
     downloadedFired = true;
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    // Save the installer path so install-update can launch it directly
+    if (info.downloadedFile) {
+      _downloadedInstallerPath = info.downloadedFile;
+      console.log('[updater] Installer saved at:', _downloadedInstallerPath);
+    }
     win.webContents.send('update-downloaded', { version: info.version });
   });
 
