@@ -59,19 +59,6 @@ const td = () => new Date().toISOString().slice(0, 10);
 const mn = (m) => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1];
 
 // ─── OCR ─────────────────────────────────────────────────────────────────────
-async function ocr(b64, mt, apiKey) {
-  try {
-    // Build the content block — images use type "image", PDFs use type "document"
-    const mediaBlock = mt === "application/pdf"
-      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
-      : { type: "image", source: { type: "base64", media_type: mt || "image/jpeg", data: b64 } };
-    const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
-    if (apiKey) headers["x-api-key"] = apiKey;
-    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers, body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1000, messages: [{ role: "user", content: [mediaBlock, { type: "text", text: 'Extract receipt data as JSON only, no markdown. Fields: {"vendor":"string","date":"YYYY-MM-DD","total":number,"items":[{"description":"string","amount":number}],"tax":number}. If unclear use null.' }] }] }) });
-    const d = await r.json();
-    return JSON.parse((d.content?.map((c) => c.text || "").join("") || "").replace(/```json|```/g, "").trim());
-  } catch { return null; }
-}
 
 // ─── Export ──────────────────────────────────────────────────────────────────
 function makeTXF(txns, yr, bizName) {
@@ -98,7 +85,7 @@ function dlFile(c, n, m) { const a = document.createElement("a"); a.href = URL.c
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 function I({ name, size = 18 }) {
-  const p = { home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", dollar: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", receipt: "M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z", car: "M16 3h-2l-2 4H6L4 3H2M5 14h14l1-5H4zM7 17a1 1 0 100 2 1 1 0 000-2zM17 17a1 1 0 100 2 1 1 0 000-2z", file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", target: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z", chart: "M18 20V10M12 20V4M6 20v-6", download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", plus: "M12 5v14M5 12h14", x: "M18 6 6 18M6 6l12 12", check: "M20 6 9 17l-5-5", trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14", edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z", camera: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z", send: "M22 2L11 13M22 2l-7 20-4-9-9-4z", calendar: "M19 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zM16 2v4M8 2v4M3 10h18", search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z", tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01", pie: "M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z", building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01", chevDown: "M6 9l6 6 6-6", settings: "M12 15a3 3 0 100-6 3 3 0 000 6z" };
+  const p = { home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", dollar: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", receipt: "M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z", car: "M16 3h-2l-2 4H6L4 3H2M5 14h14l1-5H4zM7 17a1 1 0 100 2 1 1 0 000-2zM17 17a1 1 0 100 2 1 1 0 000-2z", file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", target: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z", chart: "M18 20V10M12 20V4M6 20v-6", download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", plus: "M12 5v14M5 12h14", x: "M18 6 6 18M6 6l12 12", check: "M20 6 9 17l-5-5", trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14", edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",send: "M22 2L11 13M22 2l-7 20-4-9-9-4z", calendar: "M19 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zM16 2v4M8 2v4M3 10h18", search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z", tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01", pie: "M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z", building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01", chevDown: "M6 9l6 6 6-6", settings: "M12 15a3 3 0 100-6 3 3 0 000 6z" };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p[name] || p.file} /></svg>;
 }
 
@@ -140,13 +127,9 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
-  const [ocrBusy, setOcrBusy] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [bizMenuOpen, setBizMenuOpen] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("ocl_api_key") || "");
-  const [showApiModal, setShowApiModal] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);       // { version, downloaded, percent }
-  const fileRef = useRef();
 
   const reload = useCallback(async () => {
     const [b, t, m, i, c, g] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals")]);
@@ -189,21 +172,6 @@ export default function App() {
   const years = [...new Set(bTxns.map((t) => parseInt(t.date?.slice(0, 4))))].filter(Boolean).sort((a, b) => b - a);
   if (!years.includes(year)) years.unshift(year);
 
-  const handleReceipt = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    setOcrBusy(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const b64 = reader.result.split(",")[1];
-      const rf = { data: b64, mimeType: file.type, filename: file.name };
-      const r = await ocr(b64, file.type || "image/jpeg", apiKey);
-      setOcrBusy(false);
-      setModal({ t: "txn", d: { type: "expense", prefill: r
-        ? { vendor: r.vendor || "", date: r.date || td(), amount: r.total || 0, description: r.items?.map((i) => i.description).join(", ") || "", receiptData: r, receiptFile: rf }
-        : { receiptFile: rf } } });
-    };
-    reader.readAsDataURL(file); e.target.value = "";
-  };
   const close = () => setModal(null);
 
   if (!loading && businesses.length === 0) {
@@ -260,7 +228,6 @@ export default function App() {
             </div>
             <input placeholder="Search..." value={searchQ} onChange={(e) => setSearchQ(e.target.value)} style={{ ...inp, width: 130, paddingLeft: 8, fontSize: 12, background: "#111827" }} />
             <select value={year} onChange={(e) => setYear(+e.target.value)} style={{ ...inp, width: 80, fontSize: 12, background: "#111827", cursor: "pointer" }}>{years.map((y) => <option key={y}>{y}</option>)}</select>
-            <button title="Claude API Key (for receipt scanning)" onClick={() => setShowApiModal(true)} style={{ background: "transparent", border: "1px solid #334155", borderRadius: 7, color: apiKey ? "#22c55e" : "#f59e0b", cursor: "pointer", padding: "5px 8px", fontSize: 16 }}>🔑</button>
           </div>
         </div>
       </header>
@@ -282,7 +249,7 @@ export default function App() {
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
         : view === "dashboard" ? <Dash {...{ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc }} />
         : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
-        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onScan={() => fileRef.current?.click()} ocrBusy={ocrBusy} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
+        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} onAdd={() => setModal({ t: "inv", d: {} })} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
@@ -291,17 +258,7 @@ export default function App() {
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
       </main>
-      <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleReceipt} />
-      {/* API key settings modal */}
-      {showApiModal && <Modal title="Claude API Key" onClose={() => setShowApiModal(false)} w={420}>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16 }}>Used for receipt OCR (images and PDFs). Stored locally in your browser.</p>
-        <Field label="API Key"><input type="password" placeholder="sk-ant-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={inp} /></Field>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-          <Btn v="ghost" onClick={() => setShowApiModal(false)}>Cancel</Btn>
-          <Btn v="green" onClick={() => { localStorage.setItem("ocl_api_key", apiKey); setShowApiModal(false); }}><I name="check" size={15} /> Save</Btn>
-        </div>
-      </Modal>}
-      {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} apiKey={apiKey} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
+      {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
@@ -423,7 +380,7 @@ function Dash({ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInv
 }
 
 // ─── TXN LIST ────────────────────────────────────────────────────────────────
-function TxnList({ type, txns, searchQ, onAdd, onScan, ocrBusy, onEdit, onDelete, bc }) {
+function TxnList({ type, txns, searchQ, onAdd, onEdit, onDelete, bc }) {
   const [scope, setScope] = useState("all");
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
@@ -437,7 +394,6 @@ function TxnList({ type, txns, searchQ, onAdd, onScan, ocrBusy, onEdit, onDelete
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>{type === "income" ? "Income" : "Expenses"}</h3><span style={{ fontSize: 13, color: "#94a3b8" }}>{f.length} · {$(total)}</span></div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...inp, width: 110, fontSize: 12, background: "#111827" }}><option value="all">All</option><option value="business">Business</option><option value="personal">Personal</option></select>
-        {onScan && <Btn v="purple" onClick={onScan} disabled={ocrBusy}>{ocrBusy ? "Scanning..." : <><I name="camera" size={15} /> Scan</>}</Btn>}
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
@@ -562,7 +518,7 @@ function ReceiptViewer({ receipt, onClose }) {
 }
 
 // ─── FORM MODALS ──────────────────────────────────────────────────────────────
-function TxnForm({ type, prefill = {}, editId, bizId, bCons, apiKey, onSave, onClose }) {
+function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) {
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
   const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null });
   const [viewRcpt, setViewRcpt] = useState(false);
