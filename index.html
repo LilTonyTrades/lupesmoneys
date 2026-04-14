@@ -10,6 +10,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Polyfills that must run before any ES modules load -->
+    <script>
+      if (!Promise.try) {
+        Promise.try = function(fn) {
+          return new Promise(function(resolve, reject) {
+            try { resolve(fn()); } catch(e) { reject(e); }
+          });
+        };
+      }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
