@@ -621,13 +621,19 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
     reader.readAsDataURL(file); e.target.value = "";
     setScan({ busy: false, pct: 0, status: "", error: "" });
   };
-  const scanReceipt = async () => {
-    if (!f.receiptFile || scan.busy) return;
+  const scanReceipt = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    console.log('[App] scanReceipt called. receiptFile =', f.receiptFile ? `${f.receiptFile.filename} (${f.receiptFile.mimeType})` : 'null');
+    if (!f.receiptFile) { console.warn('[App] No receiptFile — aborting scan'); return; }
+    if (scan.busy) { console.warn('[App] Scan already in progress — aborting'); return; }
     setScan({ busy: true, pct: 0, status: "Starting…", error: "" });
     try {
       const result = await ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
+        console.log('[App] OCR progress:', status, Math.round(pct * 100) + '%');
         setScan(s => ({ ...s, status, pct }));
       });
+      console.log('[App] OCR result:', result);
       setF(prev => ({
         ...prev,
         ...(result.date && { date: result.date }),
@@ -637,7 +643,9 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
       }));
       setScan({ busy: false, pct: 1, status: "Done", error: "" });
     } catch (err) {
-      setScan({ busy: false, pct: 0, status: "", error: err.message || "OCR failed" });
+      const msg = err?.message || err?.toString() || "OCR failed (unknown error)";
+      console.error('[App] OCR error:', err);
+      setScan({ busy: false, pct: 0, status: "", error: msg });
     }
   };
   return <Modal title={`${editId ? "Edit" : "Add"} ${type === "income" ? "Income" : "Expense"}`} onClose={onClose}>
@@ -668,11 +676,11 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
                     </div>
                   </div>
                 : <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <button onClick={scanReceipt} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+                    <button type="button" onClick={scanReceipt} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", background: "rgba(99,102,241,.15)", border: "1px solid #4f46e5", borderRadius: 7, color: "#a5b4fc", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
                       🔍 Scan &amp; Auto-fill
                     </button>
                     {scan.status === "Done" && <span style={{ fontSize: 12, color: "#4ade80" }}>✓ Fields filled from receipt</span>}
-                    {scan.error && <span style={{ fontSize: 12, color: "#f87171" }}>⚠ {scan.error}</span>}
+                    {scan.error && <span style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word", maxWidth: 260 }}>⚠ {scan.error}</span>}
                   </div>
               }
             </div>

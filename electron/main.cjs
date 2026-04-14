@@ -42,6 +42,15 @@ function createWindow() {
     mainWindow.focus();
   });
 
+  // F12 / Ctrl+Shift+I toggles DevTools in any build (for debugging)
+  mainWindow.webContents.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown') return;
+    const devKeys =
+      input.key === 'F12' ||
+      (input.control && input.shift && input.key === 'I');
+    if (devKeys) mainWindow.webContents.toggleDevTools();
+  });
+
   // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
