@@ -102,17 +102,37 @@ function parseReceiptText(text) {
 
   // ── Vendor ──────────────────────────────────────────────────────────────────
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  // Generic document-type words that are never a vendor name
+  const genericDocWords = /^(receipt|invoice|statement|bill|order|confirmation|payment|purchase|transaction|summary|quote|estimate)s?$/i;
   let vendor = '';
-  for (const line of lines.slice(0, 6)) {
+
+  // Pass 1: first non-noise line in top 8, skipping generic doc words
+  for (const line of lines.slice(0, 8)) {
     if (/^\d[\d\s\-(). ]{6,}$/.test(line)) continue;
     if (/^\d+\s+[A-Z]/.test(line)) continue;
     if (/^https?:\/\//.test(line)) continue;
     if (/\$/.test(line)) continue;
     if (/\d{4}[-\/]\d{2}/.test(line)) continue;
     if (line.length < 2) continue;
+    if (genericDocWords.test(line)) continue;
+    // Skip lines that are just symbols / OCR noise (no letters)
+    if (!/[a-zA-Z]{2}/.test(line)) continue;
     vendor = line.slice(0, 60);
     break;
   }
+
+  // Pass 2: if still empty (or only got a generic word), scan full text for
+  // a line that looks like a registered business name
+  if (!vendor) {
+    const bizRe = /\b(Inc\.?|LLC\.?|Corp\.?|Ltd\.?|Co\.?|Group|Services|Solutions|Technologies|Networks?|Systems?|Consulting|Associates?|Partners?|Enterprises?)\b/i;
+    for (const line of lines) {
+      if (line.length < 3 || line.length > 80) continue;
+      if (/\$/.test(line)) continue;
+      if (/^\d/.test(line)) continue;
+      if (bizRe.test(line)) { vendor = line.slice(0, 60); break; }
+    }
+  }
+
   console.log('[OCR] Vendor:', vendor);
 
   // ── Description ─────────────────────────────────────────────────────────────
