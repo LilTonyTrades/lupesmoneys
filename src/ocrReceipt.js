@@ -68,14 +68,28 @@ function parseReceiptText(text) {
 
   // ── Amount ──────────────────────────────────────────────────────────────────
   let amount = null;
-  const labelRe = /(?:total|amount\s+(?:due|paid|charged)|grand\s+total|balance\s+due|subtotal)[^$\d\n]*\$?\s*([\d,]+\.?\d{0,2})/gi;
-  const labelMatches = [...text.matchAll(labelRe)];
-  if (labelMatches.length) {
-    amount = parseFloat(labelMatches[labelMatches.length - 1][1].replace(/,/g, ''));
-    console.log('[OCR] Amount via label match:', amount);
+
+  // Pass 1: "Amount paid" is the most authoritative — prefer it over generic totals
+  const amtPaidRe = /amount\s+paid[^$\d\n]*\$?\s*([\d,]+\.?\d{0,2})/i;
+  const amtPaidMatch = text.match(amtPaidRe);
+  if (amtPaidMatch) {
+    amount = parseFloat(amtPaidMatch[1].replace(/,/g, ''));
+    console.log('[OCR] Amount via "Amount paid":', amount);
   }
+
+  // Pass 2: Bold/large total labels
   if (!amount) {
-    const all = [...text.matchAll(/\$\s*([\d,]+\.\d{2})/g)].map(m => parseFloat(m[1].replace(/,/g, '')));
+    const labelRe = /(?:total|amount\s+(?:due|charged)|grand\s+total|balance\s+due)[^$\d\n]*\$?\s*([\d,]+\.?\d{0,2})/gi;
+    const labelMatches = [...text.matchAll(labelRe)].filter(m => parseFloat(m[1].replace(/,/g, '')) > 0);
+    if (labelMatches.length) {
+      amount = parseFloat(labelMatches[labelMatches.length - 1][1].replace(/,/g, ''));
+      console.log('[OCR] Amount via label match:', amount);
+    }
+  }
+
+  // Pass 3: Largest positive dollar amount on the page
+  if (!amount) {
+    const all = [...text.matchAll(/\$\s*([\d,]+\.\d{2})/g)].map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => n > 0);
     if (all.length) { amount = Math.max(...all); console.log('[OCR] Amount via largest $:', amount); }
   }
 
@@ -146,9 +160,54 @@ function parseReceiptText(text) {
   console.log('[OCR] Vendor:', vendor);
 
   // ── Description ─────────────────────────────────────────────────────────────
-  const descRe = /(?:order|invoice|receipt|purchase|service|subscription|payment for)[:\s#]*([^\n]{3,80})/i;
-  const dm = text.match(descRe);
-  const description = dm ? dm[0].trim().slice(0, 80) : vendor;
+  let description = '';
+
+  // Pass 1: Explicit invoice/order/receipt number — most reliable across vendors
+  // e.g. "Invoice number UUJTYH6R-0001", "Order #12345"
+  const invNumRe = /(?:invoice|order|receipt)\s+(?:number|#|no\.?)\s*[:\s]*([A-Z0-9][A-Z0-9\-]{3,})/i;
+  const invMatch = text.match(invNumRe);
+  if (invMatch) {
+    // Reconstruct clean label rather than including OCR noise around it
+    const keyword = invMatch[0].match(/^(invoice|order|receipt)/i)?.[0] || 'Invoice';
+    description = `${keyword.charAt(0).toUpperCase() + keyword.slice(1).toLowerCase()} number ${invMatch[1].trim()}`;
+  }
+
+  // Pass 2: Product / service name — short line near the line-item table
+  // e.g. "Claude Pro", "Max plan - 5x", "OpenRouter Credits"
+  if (!description) {
+    const productRe = /^([A-Za-z][A-Za-z0-9 \-–&+]{3,60})\s*$/m;
+    // Scan lines that look like product names (no $, no digits-only, reasonable length)
+    for (const line of lines) {
+      if (line.length < 4 || line.length > 70) continue;
+      if (/\$|^\d+$|@/.test(line)) continue;
+      if (genericDocWordRe.test(line)) continue;
+      if (metadataRe.test(line)) continue;
+      if (spelledDateRe.test(line)) continue;
+      if (/^(qty|unit\s*price|tax|amount|description|subtotal|total|payment)/i.test(line)) continue;
+      // Must look like a product/service — contain at least one letter word
+      if (productRe.test(line) && /[a-z]{3}/i.test(line)) {
+        description = line.trim().slice(0, 80);
+        break;
+      }
+    }
+  }
+
+  // Pass 3: Generic keyword fallback — but reject if the captured content is just
+  // OCR logo noise (≤4 chars or mostly non-alpha after stripping the keyword)
+  if (!description) {
+    const descRe = /(?:order|invoice|receipt|purchase|service|subscription|payment\s+for)[:\s#]*([^\n]{3,80})/i;
+    const dm = text.match(descRe);
+    if (dm && dm[1]) {
+      const afterKeyword = dm[1].trim();
+      const alphaRatio = (afterKeyword.match(/[a-zA-Z]/g) || []).length / afterKeyword.length;
+      // Only use if it has real words (not logo noise like "A\" or "<")
+      if (afterKeyword.length >= 5 && alphaRatio > 0.4) {
+        description = dm[0].trim().slice(0, 80);
+      }
+    }
+  }
+
+  if (!description) description = vendor;
   console.log('[OCR] Description:', description);
 
   const result = { amount, date, vendor, description };
