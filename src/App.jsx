@@ -57,6 +57,13 @@ async function del(s, id) { const db = await openDB(); return new Promise((ok, n
 // ─── Utils ───────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const $ = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+function calcNextDue(fromDate, freq) {
+  const d = new Date(fromDate + 'T00:00:00');
+  if (freq === 'weekly')  d.setDate(d.getDate() + 7);
+  else if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
+  else if (freq === 'yearly')  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
 // Sum monetary amounts in integer cents to avoid floating-point drift
 const sumAmt = (arr, fn = (x) => x) => Math.round(arr.reduce((s, x) => s + Math.round(fn(x) * 100), 0)) / 100;
 const td = () => new Date().toISOString().slice(0, 10);
@@ -179,6 +186,8 @@ function App() {
   const [checkStatus, setCheckStatus] = useState("idle"); // idle | checking | up-to-date | error
   const [appVersion, setAppVersion] = useState("");
   const [globalError, setGlobalError] = useState(null);
+  const [successToast, setSuccessToast] = useState(null); // { msg, count }
+  const recurringChecked = useRef(null); // tracks last bizId processed so we run once per session per biz
 
   const reload = useCallback(async () => {
     const [b, t, m, i, c, g] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals")]);
@@ -213,6 +222,29 @@ function App() {
       window.removeEventListener('unhandledrejection', onUnhandled);
     };
   }, []);
+
+  // ── Recurring transaction auto-create ─────────────────────────────────────
+  useEffect(() => {
+    if (loading || !bizId || recurringChecked.current === bizId) return;
+    recurringChecked.current = bizId;
+    const today = td();
+    const due = bTxns.filter((t) => t.recurring?.freq && t.recurring?.nextDue && t.recurring.nextDue <= today);
+    if (due.length === 0) return;
+    (async () => {
+      const created = [];
+      for (const tpl of due) {
+        // Create a new instance for the due date (no receipt, no recurring flag)
+        const { recurring, receiptFile, ...rest } = tpl;
+        const instance = { ...rest, id: uid(), date: recurring.nextDue, recurring: null };
+        await put('transactions', instance);
+        // Advance the template's nextDue
+        await put('transactions', { ...tpl, recurring: { ...recurring, nextDue: calcNextDue(recurring.nextDue, recurring.freq) } });
+        created.push(`${tpl.vendor || tpl.description} (${$(tpl.amount)})`);
+      }
+      reload();
+      setSuccessToast({ msg: `${created.length} recurring transaction${created.length > 1 ? 's' : ''} auto-added`, items: created });
+    })();
+  }, [loading, bizId, bTxns]);
 
   // Auto-updater events via preload
   useEffect(() => {
@@ -359,6 +391,16 @@ function App() {
         />
       )}
       {globalError && <ErrorToast message={globalError} onDismiss={() => setGlobalError(null)} />}
+      {successToast && (
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "rgba(20,40,20,.97)", border: "1px solid #22c55e", borderRadius: 10, padding: "12px 18px", maxWidth: 420, width: "90vw", display: "flex", alignItems: "flex-start", gap: 12, boxShadow: "0 8px 32px rgba(0,0,0,.6)" }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>🔁</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#4ade80", marginBottom: 4 }}>{successToast.msg}</div>
+            {successToast.items?.map((item, i) => <div key={i} style={{ fontSize: 11, color: "#94a3b8" }}>• {item}</div>)}
+          </div>
+          <button onClick={() => setSuccessToast(null)} style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -566,7 +608,7 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onEdit, onDelete, bc
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
-    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Description", "Category", "Scope", "Amount", "📎", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i >= 5 ? "center" : "left", padding: "9px 12px", fontSize: i === 5 ? 14 : 10, fontWeight: 600, color: "#64748b", textTransform: i === 5 ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 36 : i === 6 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500 }}>{t.description || "—"}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <Badge color={bc}>Ln {cat.line}: {cat.label}</Badge> : "—"}</td><td style={{ padding: "10px 12px" }}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "−"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>📎</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
+    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Description", "Category", "Scope", "Amount", "📎", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i >= 5 ? "center" : "left", padding: "9px 12px", fontSize: i === 5 ? 14 : 10, fontWeight: 600, color: "#64748b", textTransform: i === 5 ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 36 : i === 6 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{t.description || "—"}{t.recurring?.freq && <span title={`Repeats ${t.recurring.freq}`} style={{ fontSize: 10, background: "rgba(99,102,241,.2)", color: "#a5b4fc", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>🔁 {t.recurring.freq}</span>}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <Badge color={bc}>Ln {cat.line}: {cat.label}</Badge> : "—"}</td><td style={{ padding: "10px 12px" }}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "−"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>📎</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
   </div>
   {viewingReceipt && <ReceiptViewer receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} />}
 </>;
@@ -606,11 +648,31 @@ function ConV({ contractors, txns, onAdd, onEdit, onDelete, bc }) {
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
 function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
   const [tab, setTab] = useState("pnl");
-  const expByCat = {}, incByCat = {}, monthly = {};
-  txns.filter((t) => t.type === "expense").forEach((t) => { const c = SCHEDULE_C.find((c) => c.code === t.category); expByCat[c?.label || "Other"] = (expByCat[c?.label || "Other"] || 0) + t.amount; });
-  txns.filter((t) => t.type === "income").forEach((t) => { const c = INC_CATS.find((c) => c.code === t.category); incByCat[c?.label || "Other"] = (incByCat[c?.label || "Other"] || 0) + t.amount; });
-  for (let m = 1; m <= 12; m++) monthly[mn(m)] = { income: 0, expense: 0 };
-  txns.forEach((t) => { const m = mn(parseInt(t.date?.slice(5, 7))); if (monthly[m]) monthly[m][t.type] += t.amount; });
+
+  // Use integer-cent summation to avoid floating-point drift
+  const expByCat = {}, incByCat = {};
+  txns.filter((t) => t.type === "expense").forEach((t) => { const c = SCHEDULE_C.find((c) => c.code === t.category); const k = c?.label || "Other"; expByCat[k] = (expByCat[k] || 0) + Math.round(t.amount * 100); });
+  txns.filter((t) => t.type === "income").forEach((t) => { const c = INC_CATS.find((c) => c.code === t.category); const k = c?.label || "Other"; incByCat[k] = (incByCat[k] || 0) + Math.round(t.amount * 100); });
+  // Convert cents back to dollars for display
+  Object.keys(expByCat).forEach((k) => { expByCat[k] = expByCat[k] / 100; });
+  Object.keys(incByCat).forEach((k) => { incByCat[k] = incByCat[k] / 100; });
+
+  const monthly = {};
+  for (let m = 1; m <= 12; m++) monthly[mn(m)] = { incCents: 0, expCents: 0 };
+  txns.forEach((t) => { const m = mn(parseInt(t.date?.slice(5, 7))); if (monthly[m]) { if (t.type === "income") monthly[m].incCents += Math.round(t.amount * 100); else monthly[m].expCents += Math.round(t.amount * 100); } });
+
+  const totalIncCents = Object.values(monthly).reduce((s, v) => s + v.incCents, 0);
+  const totalExpCents = Object.values(monthly).reduce((s, v) => s + v.expCents, 0);
+
+  const exportPnLCSV = () => {
+    const rows = [["Month", "Income", "Expenses", "Net"]];
+    Object.entries(monthly).forEach(([m, v]) => {
+      const inc = v.incCents / 100, exp = v.expCents / 100;
+      rows.push([m, inc.toFixed(2), exp.toFixed(2), (inc - exp).toFixed(2)]);
+    });
+    rows.push(["TOTAL", (totalIncCents / 100).toFixed(2), (totalExpCents / 100).toFixed(2), ((totalIncCents - totalExpCents) / 100).toFixed(2)]);
+    dlFile(rows.map((r) => r.join(",")).join("\n"), `PnL_${year}.csv`, "text/csv");
+  };
 
   return <div>
     <div style={{ display: "flex", gap: 2, marginBottom: 20 }}>
@@ -621,7 +683,19 @@ function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
         <Card><div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Income</div>{Object.entries(incByCat).map(([l, t]) => <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)", fontSize: 13 }}><span style={{ color: "#d1d5db" }}>{l}</span><span style={{ color: "#22c55e", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(t)}</span></div>)}<div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 0", fontWeight: 700 }}><span style={{ color: "#f1f5f9" }}>Total</span><span style={{ color: "#22c55e" }}>{$(totInc)}</span></div></Card>
         <Card><div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Expenses</div>{Object.entries(expByCat).sort((a, b) => b[1] - a[1]).map(([l, t]) => <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)", fontSize: 13 }}><span style={{ color: "#d1d5db" }}>{l}</span><span style={{ color: "#ef4444", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(t)}</span></div>)}<div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 0", fontWeight: 700 }}><span style={{ color: "#f1f5f9" }}>Total</span><span style={{ color: "#ef4444" }}>{$(totExp)}</span></div></Card>
       </div>
-      <Card><div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Monthly P&L</div><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Month", "Income", "Expenses", "Net"].map((h, i) => <th key={i} style={{ textAlign: i ? "right" : "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead><tbody>{Object.entries(monthly).map(([m, v]) => <tr key={m} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "8px 10px", fontSize: 13 }}>{m}</td><td style={{ padding: "8px 10px", textAlign: "right", color: "#22c55e", fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{$(v.income)}</td><td style={{ padding: "8px 10px", textAlign: "right", color: "#ef4444", fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{$(v.expense)}</td><td style={{ padding: "8px 10px", textAlign: "right", color: v.income - v.expense >= 0 ? "#3b82f6" : "#f97316", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 600 }}>{$(v.income - v.expense)}</td></tr>)}</tbody></table></Card>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9" }}>Monthly P&L — {year}</div>
+          <Btn v="ghost" onClick={exportPnLCSV}><I name="download" size={14} /> Export CSV</Btn>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["Month", "Income", "Expenses", "Net"].map((h, i) => <th key={i} style={{ textAlign: i ? "right" : "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {Object.entries(monthly).map(([m, v]) => { const inc = v.incCents / 100, exp = v.expCents / 100, net = inc - exp; return <tr key={m} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "8px 10px", fontSize: 13 }}>{m}</td><td style={{ padding: "8px 10px", textAlign: "right", color: inc > 0 ? "#22c55e" : "#475569", fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{$(inc)}</td><td style={{ padding: "8px 10px", textAlign: "right", color: exp > 0 ? "#ef4444" : "#475569", fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{$(exp)}</td><td style={{ padding: "8px 10px", textAlign: "right", color: net >= 0 ? "#3b82f6" : "#f97316", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, fontWeight: 600 }}>{$(net)}</td></tr>; })}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid rgba(255,255,255,.1)" }}><td style={{ padding: "10px 10px", fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Total</td><td style={{ padding: "10px 10px", textAlign: "right", color: "#22c55e", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 13 }}>{$(totalIncCents / 100)}</td><td style={{ padding: "10px 10px", textAlign: "right", color: "#ef4444", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 13 }}>{$(totalExpCents / 100)}</td><td style={{ padding: "10px 10px", textAlign: "right", color: (totalIncCents - totalExpCents) >= 0 ? "#3b82f6" : "#f97316", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 13 }}>{$((totalIncCents - totalExpCents) / 100)}</td></tr></tfoot>
+        </table>
+      </Card>
     </div>}
     {tab === "tax" && <Card>
       <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 16 }}>Tax Estimate — {year}</div>
@@ -819,7 +893,7 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
 
 function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) {
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
-  const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null });
+  const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null, recurringEnabled: !!(prefill.recurring?.freq), recurringFreq: prefill.recurring?.freq || "monthly" });
   const [viewRcpt, setViewRcpt] = useState(false);
   const [scan, setScan] = useState({ busy: false, pct: 0, status: "", error: "" });
   const attachRef = useRef();
@@ -875,6 +949,22 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
       <Field label="Scope"><select value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} style={inp}><option value="business">Business</option><option value="personal">Personal</option></select></Field>
       {type === "expense" && bCons?.length > 0 && <Field label="Contractor"><select value={f.contractorId} onChange={(e) => setF({ ...f, contractorId: e.target.value })} style={inp}><option value="">None</option>{bCons.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
       <Field label="Notes" span><textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ ...inp, resize: "vertical" }} /></Field>
+      <Field label="Recurring" span>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "6px 0" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13, color: "#d1d5db", userSelect: "none" }}>
+            <input type="checkbox" checked={f.recurringEnabled} onChange={(e) => setF({ ...f, recurringEnabled: e.target.checked })} style={{ width: 15, height: 15, cursor: "pointer", accentColor: "#6366f1" }} />
+            Repeat automatically
+          </label>
+          {f.recurringEnabled && (
+            <select value={f.recurringFreq} onChange={(e) => setF({ ...f, recurringFreq: e.target.value })} style={{ ...inp, width: 130 }}>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          )}
+          {f.recurringEnabled && <span style={{ fontSize: 11, color: "#64748b" }}>Next: {calcNextDue(f.date || td(), f.recurringFreq)}</span>}
+        </div>
+      </Field>
       <Field label="Receipt / Document" span>
         <input ref={attachRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={attachReceipt} />
         {f.receiptFile
@@ -904,7 +994,11 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
         }
       </Field>
     </div>
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.amount || !f.date) return; onSave({ id: editId || uid(), bizId, type, ...f, amount: parseFloat(f.amount) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div>
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => {
+      if (!f.amount || !f.date) return;
+      const { recurringEnabled, recurringFreq, ...data } = f;
+      onSave({ id: editId || uid(), bizId, type, ...data, amount: parseFloat(data.amount) || 0, recurring: recurringEnabled ? { freq: recurringFreq, nextDue: calcNextDue(data.date, recurringFreq) } : null });
+    }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div>
     {viewRcpt && f.receiptFile && <ReceiptViewer receipt={f.receiptFile} onClose={() => setViewRcpt(false)} />}
   </Modal>;
 }
