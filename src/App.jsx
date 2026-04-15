@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ocrReceiptFile } from "./ocrReceipt.js";
+import { FEATURES } from "./featureFlags.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SCHEDULE_C = [
@@ -56,6 +57,8 @@ async function del(s, id) { const db = await openDB(); return new Promise((ok, n
 // ─── Utils ───────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const $ = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+// Sum monetary amounts in integer cents to avoid floating-point drift
+const sumAmt = (arr, fn = (x) => x) => Math.round(arr.reduce((s, x) => s + Math.round(fn(x) * 100), 0)) / 100;
 const td = () => new Date().toISOString().slice(0, 10);
 const mn = (m) => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1];
 
@@ -70,10 +73,10 @@ function makeTXF(txns, yr, bizName) {
     const cat = cats.find((c) => c.code === t.category);
     if (!cat) return;
     const k = `${t.type}-${cat.line}`;
-    if (!agg[k]) agg[k] = { type: t.type, line: cat.line, label: cat.label, total: 0 };
-    agg[k].total += t.amount;
+    if (!agg[k]) agg[k] = { type: t.type, line: cat.line, label: cat.label, totalCents: 0 };
+    agg[k].totalCents += Math.round(t.amount * 100);
   });
-  Object.values(agg).forEach((a) => lines.push("TD", a.type === "income" ? "N521" : "N522", `C${a.line}`, `L${a.total.toFixed(2)}`, `$${a.label}`, "^"));
+  Object.values(agg).forEach((a) => lines.push("TD", a.type === "income" ? "N521" : "N522", `C${a.line}`, `L${(a.totalCents / 100).toFixed(2)}`, `$${a.label}`, "^"));
   return lines.join("\r\n");
 }
 function makeCSV(txns, yr) {
@@ -233,9 +236,9 @@ function App() {
   const yMiles = useMemo(() => bMiles.filter((m) => m.date?.startsWith(String(year))), [bMiles, year]);
   const yInvs = useMemo(() => bInvs.filter((i) => i.date?.startsWith(String(year))), [bInvs, year]);
   const bizOnly = useMemo(() => yTxns.filter((t) => t.scope !== "personal"), [yTxns]);
-  const totInc = useMemo(() => bizOnly.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0), [bizOnly]);
-  const totExp = useMemo(() => bizOnly.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0), [bizOnly]);
-  const mileDed = useMemo(() => yMiles.reduce((s, m) => s + m.miles * MILE_RATE, 0), [yMiles]);
+  const totInc = useMemo(() => sumAmt(bizOnly.filter((t) => t.type === "income"), (t) => t.amount), [bizOnly]);
+  const totExp = useMemo(() => sumAmt(bizOnly.filter((t) => t.type === "expense"), (t) => t.amount), [bizOnly]);
+  const mileDed = useMemo(() => sumAmt(yMiles, (m) => m.miles * MILE_RATE), [yMiles]);
   const net = totInc - totExp - mileDed;
   const seTax = Math.max(0, net * 0.9235 * SE_RATE);
   const qEst = seTax / 4;
@@ -324,7 +327,7 @@ function App() {
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
         : view === "dashboard" ? <Dash {...{ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc }} />
         : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
-        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
+        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} onAdd={() => setModal({ t: "inv", d: {} })} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
@@ -333,6 +336,7 @@ function App() {
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
       </main>
+      {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={() => { reload(); close(); }} onClose={close} />}
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
@@ -540,7 +544,7 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
 }
 
 // ─── TXN LIST ────────────────────────────────────────────────────────────────
-function TxnList({ type, txns, searchQ, onAdd, onEdit, onDelete, bc }) {
+function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onEdit, onDelete, bc }) {
   const [scope, setScope] = useState("all");
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
@@ -548,12 +552,17 @@ function TxnList({ type, txns, searchQ, onAdd, onEdit, onDelete, bc }) {
   if (scope === "business") f = f.filter((t) => t.scope !== "personal");
   if (scope === "personal") f = f.filter((t) => t.scope === "personal");
   if (searchQ) { const q = searchQ.toLowerCase(); f = f.filter((t) => (t.description || "").toLowerCase().includes(q) || (t.vendor || "").toLowerCase().includes(q)); }
-  const total = f.reduce((s, t) => s + t.amount, 0);
+  const total = sumAmt(f, (t) => t.amount);
   return <><div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>{type === "income" ? "Income" : "Expenses"}</h3><span style={{ fontSize: 13, color: "#94a3b8" }}>{f.length} · {$(total)}</span></div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...inp, width: 110, fontSize: 12, background: "#111827" }}><option value="all">All</option><option value="business">Business</option><option value="personal">Personal</option></select>
+        {type === "expense" && (
+          FEATURES.BATCH_SCAN
+            ? <Btn onClick={onBatchScan} v="ghost" title="Scan multiple receipts at once"><I name="layers" size={15} /> Batch Scan</Btn>
+            : <Btn v="ghost" title="Upgrade to Pro" style={{ opacity: 0.45, cursor: "default" }} onClick={() => {}}><I name="lock" size={14} /> Batch Scan <span style={{ fontSize: 10, background: "#f59e0b", color: "#000", borderRadius: 4, padding: "1px 5px", marginLeft: 3, fontWeight: 700 }}>PRO</span></Btn>
+        )}
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
@@ -679,6 +688,135 @@ function ReceiptViewer({ receipt, onClose }) {
 }
 
 // ─── FORM MODALS ──────────────────────────────────────────────────────────────
+// ─── Batch Scan Modal ─────────────────────────────────────────────────────────
+function BatchScanModal({ bizId, onSave, onDone, onClose }) {
+  const [items, setItems]   = useState([]);   // { file, status, result, error, pct }
+  const [running, setRunning] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const fileRef = useRef();
+
+  const fileToBase64 = (file) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(",")[1]);
+    r.onerror = () => rej(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+
+  const handleFiles = (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    setItems(files.map((f) => ({ file: f, status: "queued", result: null, error: "", pct: 0 })));
+    setFinished(false);
+    e.target.value = "";
+  };
+
+  const runBatch = async () => {
+    setRunning(true);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.status === "done") continue; // skip already scanned
+      setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "scanning", pct: 0 } : x));
+      try {
+        const data = await fileToBase64(item.file);
+        const result = await Promise.race([
+          ocrReceiptFile(
+            { data, mimeType: item.file.type, filename: item.file.name },
+            ({ pct }) => setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, pct } : x))
+          ),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("Timed out after 90s")), 90_000)),
+        ]);
+        const txn = {
+          id: uid(), bizId, type: "expense",
+          date:        result.date        || td(),
+          amount:      result.amount      || 0,
+          vendor:      result.vendor      || "",
+          description: result.description || item.file.name,
+          category:    SCHEDULE_C[0].code,
+          scope:       "business",
+          notes:       "",
+          receiptFile: { data, mimeType: item.file.type, filename: item.file.name },
+        };
+        await onSave(txn);
+        setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", result, pct: 1 } : x));
+      } catch (err) {
+        setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "error", error: err.message, pct: 0 } : x));
+      }
+    }
+    setRunning(false);
+    setFinished(true);
+  };
+
+  const doneCount  = items.filter((x) => x.status === "done").length;
+  const errorCount = items.filter((x) => x.status === "error").length;
+
+  const statusIcon  = (s) => s === "done" ? "✓" : s === "error" ? "✗" : s === "scanning" ? "⟳" : "·";
+  const statusColor = (s) => s === "done" ? "#4ade80" : s === "error" ? "#f87171" : s === "scanning" ? "#a5b4fc" : "#64748b";
+
+  return (
+    <Modal title="Batch Scan Receipts" onClose={onClose} w={520}>
+      {/* File picker */}
+      <input ref={fileRef} type="file" multiple accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleFiles} />
+
+      {items.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "32px 0" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
+          <div style={{ color: "#94a3b8", fontSize: 14, marginBottom: 20 }}>Select multiple receipts to scan and auto-save all at once.</div>
+          <Btn onClick={() => fileRef.current?.click()}><I name="plus" size={15} /> Choose Files</Btn>
+        </div>
+      ) : (
+        <>
+          {/* File list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto", marginBottom: 16 }}>
+            {items.map((item, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)" }}>
+                <span style={{ fontSize: 16, color: statusColor(item.status), width: 18, textAlign: "center", flexShrink: 0, animation: item.status === "scanning" ? "spin 1s linear infinite" : undefined }}>{statusIcon(item.status)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#f1f5f9" }}>{item.file.name}</div>
+                  {item.status === "scanning" && (
+                    <div style={{ height: 3, background: "#1e293b", borderRadius: 2, marginTop: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.round(item.pct * 100)}%`, background: "#6366f1", transition: "width .3s" }} />
+                    </div>
+                  )}
+                  {item.status === "done" && item.result && (
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      {item.result.vendor && <span>{item.result.vendor}</span>}
+                      {item.result.vendor && item.result.amount ? " · " : ""}
+                      {item.result.amount ? `$${item.result.amount.toFixed(2)}` : ""}
+                      {item.result.date ? ` · ${item.result.date}` : ""}
+                    </div>
+                  )}
+                  {item.status === "error" && <div style={{ fontSize: 11, color: "#f87171", marginTop: 2 }}>⚠ {item.error}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Summary / actions */}
+          {finished ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ padding: "10px 14px", background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 8, fontSize: 13, color: "#4ade80" }}>
+                {doneCount} expense{doneCount !== 1 ? "s" : ""} saved{errorCount > 0 ? `, ${errorCount} failed` : ""}.
+                {doneCount > 0 && " Review them in the Expenses list — you can edit category and details there."}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                {!running && <Btn onClick={() => fileRef.current?.click()} v="ghost">Scan More</Btn>}
+                <Btn v="green" onClick={onDone}><I name="check" size={15} /> Done</Btn>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button onClick={() => fileRef.current?.click()} disabled={running} style={{ background: "transparent", border: "none", color: running ? "#334155" : "#60a5fa", cursor: running ? "default" : "pointer", fontSize: 13, textDecoration: "underline", padding: 0 }}>Change files</button>
+              <Btn v="green" onClick={runBatch} disabled={running}>
+                {running ? <><I name="loader" size={15} /> Scanning…</> : <><I name="scan" size={15} /> Scan All ({items.length})</>}
+              </Btn>
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) {
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
   const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null });
