@@ -125,8 +125,10 @@ function parseReceiptText(text) {
     if (spelledDateRe.test(line)) continue;
     // Skip lines that are just symbols / OCR noise (no real letters)
     if (!/[a-zA-Z]{2}/.test(line)) continue;
-    vendor = line.slice(0, 60);
-    break;
+    // Strip trailing metadata that got OCR'd onto the same line (e.g. "OpenRouter, Inc Bill to")
+    let cleaned = line.slice(0, 60);
+    cleaned = cleaned.replace(/\s+(bill\s*to|ship\s*to|sold\s*to|pay\s*to|remit\s*to|invoice\s*(number|#|no)|receipt\s*(number|#|no)|date|paid|total|amount).*$/i, '').trim();
+    if (cleaned.length >= 2) { vendor = cleaned; break; }
   }
 
   // Pass 2: if still empty (or only got a generic word), scan full text for
