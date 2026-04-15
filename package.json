@@ -1,13 +1,13 @@
 {
   "name": "openclaw-books",
   "version": "1.0.0",
-  "description": "OpenClaw Books — Schedule C Bookkeeping for Self-Employed",
+  "description": "OpenClaw Books \u2014 Schedule C Bookkeeping for Self-Employed",
   "author": "OpenClaw",
   "license": "MIT",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/setup-ocr-assets.cjs && vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "gen-icon": "node scripts/gen-icon.js",
     "electron:build": "npm run build && node scripts/gen-icon.js && electron-builder --win",

@@ -216,68 +216,107 @@ function parseReceiptText(text) {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
-export async function ocrReceiptFile({ data, mimeType, filename }, onProgress) {
+// Returns a Promise with a `.cancel()` method that aborts the OCR worker if
+// called before completion. The promise rejects with an Error('OCR cancelled')
+// when cancel() runs while recognition is in flight.
+export function ocrReceiptFile({ data, mimeType, filename }, onProgress) {
   console.log('[OCR] ocrReceiptFile called. mimeType =', mimeType, '| filename =', filename, '| data length =', data?.length);
 
-  if (!data) throw new Error('No file data to scan.');
+  let workerRef = null;
+  let cancelled = false;
+  let rejectFn = null;
 
-  let imageDataUrl;
+  const promise = (async () => {
+    if (!data) throw new Error('No file data to scan.');
 
-  if (mimeType === 'application/pdf') {
-    console.log('[OCR] Handling as PDF');
-    onProgress?.({ status: 'Rendering PDF…', pct: 0.05 });
-    imageDataUrl = await pdfToImageDataUrl(data);
-  } else {
-    console.log('[OCR] Handling as image:', mimeType);
-    imageDataUrl = `data:${mimeType};base64,${data}`;
-  }
+    let imageDataUrl;
+    if (mimeType === 'application/pdf') {
+      console.log('[OCR] Handling as PDF');
+      onProgress?.({ status: 'Rendering PDF…', pct: 0.05 });
+      imageDataUrl = await pdfToImageDataUrl(data);
+    } else {
+      console.log('[OCR] Handling as image:', mimeType);
+      imageDataUrl = `data:${mimeType};base64,${data}`;
+    }
+    if (cancelled) throw new Error('OCR cancelled');
 
-  onProgress?.({ status: 'Loading OCR engine…', pct: 0.10 });
-  console.log('[OCR] Dynamically importing tesseract.js...');
+    onProgress?.({ status: 'Loading OCR engine…', pct: 0.10 });
+    console.log('[OCR] Dynamically importing tesseract.js...');
 
-  let createWorker;
-  try {
-    ({ createWorker } = await import('tesseract.js'));
-    console.log('[OCR] tesseract.js imported successfully');
-  } catch (e) {
-    console.error('[OCR] Failed to import tesseract.js:', e);
-    throw new Error('OCR engine failed to load: ' + (e.message || String(e)));
-  }
+    let createWorker;
+    try {
+      ({ createWorker } = await import('tesseract.js'));
+      console.log('[OCR] tesseract.js imported successfully');
+    } catch (e) {
+      console.error('[OCR] Failed to import tesseract.js:', e);
+      throw new Error('OCR engine failed to load: ' + (e.message || String(e)));
+    }
+    if (cancelled) throw new Error('OCR cancelled');
 
-  console.log('[OCR] Creating Tesseract worker...');
-  let worker;
-  try {
-    worker = await createWorker('eng', 1, {
-      logger(m) {
-        console.log('[OCR] Tesseract:', m.status, m.progress != null ? Math.round(m.progress * 100) + '%' : '');
-        if (m.status === 'loading tesseract core')
-          onProgress?.({ status: 'Loading OCR engine…', pct: 0.12 });
-        else if (m.status === 'loading language traineddata')
-          onProgress?.({ status: 'Downloading language data…', pct: 0.15 + (m.progress || 0) * 0.05 });
-        else if (m.status === 'initializing tesseract')
-          onProgress?.({ status: 'Initializing…', pct: 0.20 });
-        else if (m.status === 'recognizing text')
-          onProgress?.({ status: 'Reading text…', pct: 0.22 + (m.progress || 0) * 0.70 });
-      },
-    });
-    console.log('[OCR] Tesseract worker created');
-  } catch (e) {
-    console.error('[OCR] Tesseract createWorker failed:', e);
-    throw new Error('OCR worker init failed: ' + (e.message || String(e)));
-  }
+    console.log('[OCR] Creating Tesseract worker...');
+    // Resolve bundled asset paths. In dev these come from Vite's public/ at
+    // /tesseract/, in packaged Electron they're served from the same path
+    // (Vite copies public/ → dist/, electron loads via file:// protocol).
+    const assetBase = new URL('./tesseract/', document.baseURI).href;
+    try {
+      workerRef = await createWorker('eng', 1, {
+        workerPath: assetBase + 'worker.min.js',
+        corePath: assetBase,
+        langPath: assetBase,
+        logger(m) {
+          console.log('[OCR] Tesseract:', m.status, m.progress != null ? Math.round(m.progress * 100) + '%' : '');
+          if (m.status === 'loading tesseract core')
+            onProgress?.({ status: 'Loading OCR engine…', pct: 0.12 });
+          else if (m.status === 'loading language traineddata')
+            onProgress?.({ status: 'Downloading language data…', pct: 0.15 + (m.progress || 0) * 0.05 });
+          else if (m.status === 'initializing tesseract')
+            onProgress?.({ status: 'Initializing…', pct: 0.20 });
+          else if (m.status === 'recognizing text')
+            onProgress?.({ status: 'Reading text…', pct: 0.22 + (m.progress || 0) * 0.70 });
+        },
+      });
+      console.log('[OCR] Tesseract worker created');
+    } catch (e) {
+      console.error('[OCR] Tesseract createWorker failed:', e);
+      throw new Error('OCR worker init failed: ' + (e.message || String(e)));
+    }
+    if (cancelled) {
+      try { await workerRef.terminate(); } catch (_) {}
+      throw new Error('OCR cancelled');
+    }
 
-  try {
-    console.log('[OCR] Running recognition...');
-    const { data: { text } } = await worker.recognize(imageDataUrl);
-    console.log('[OCR] Recognition complete, text length =', text.length);
-    onProgress?.({ status: 'Parsing…', pct: 0.95 });
-    const result = parseReceiptText(text);
-    onProgress?.({ status: 'Done', pct: 1.0 });
-    return result;
-  } catch (e) {
-    console.error('[OCR] worker.recognize failed:', e);
-    throw new Error('OCR recognition failed: ' + (e.message || String(e)));
-  } finally {
-    await worker.terminate().catch(() => {});
-  }
+    try {
+      console.log('[OCR] Running recognition...');
+      const { data: { text } } = await workerRef.recognize(imageDataUrl);
+      console.log('[OCR] Recognition complete, text length =', text.length);
+      if (cancelled) throw new Error('OCR cancelled');
+      onProgress?.({ status: 'Parsing…', pct: 0.95 });
+      const result = parseReceiptText(text);
+      onProgress?.({ status: 'Done', pct: 1.0 });
+      return result;
+    } catch (e) {
+      console.error('[OCR] worker.recognize failed:', e);
+      if (cancelled) throw new Error('OCR cancelled');
+      throw new Error('OCR recognition failed: ' + (e.message || String(e)));
+    } finally {
+      try { await workerRef?.terminate(); } catch (_) {}
+      workerRef = null;
+    }
+  })();
+
+  // Attach cancel() to the returned promise. Calling cancel() terminates the
+  // worker (which causes the in-flight recognize() to reject) and ensures the
+  // returned promise rejects with 'OCR cancelled' even if the worker is still
+  // initialising and hasn't been assigned yet.
+  promise.cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    console.log('[OCR] cancel() invoked — terminating worker');
+    if (workerRef) {
+      try { workerRef.terminate(); } catch (_) {}
+      workerRef = null;
+    }
+  };
+
+  return promise;
 }

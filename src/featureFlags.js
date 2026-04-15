@@ -5,6 +5,6 @@
 //
 // To re-enable, flip back to true and push another release.
 
-export const FEATURES = {
+export const FEATURES = Object.freeze({
   BATCH_SCAN: true,   // Batch receipt scanning (paid feature — lock by setting false)
-};
+});

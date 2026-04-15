@@ -58,10 +58,11 @@ async function del(s, id) { const db = await openDB(); return new Promise((ok, n
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const $ = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 function calcNextDue(fromDate, freq) {
-  const d = new Date(fromDate + 'T00:00:00');
-  if (freq === 'weekly')  d.setDate(d.getDate() + 7);
-  else if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
-  else if (freq === 'yearly')  d.setFullYear(d.getFullYear() + 1);
+  const [y, m, dd] = fromDate.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, dd));
+  if (freq === 'weekly')       d.setUTCDate(d.getUTCDate() + 7);
+  else if (freq === 'monthly') d.setUTCMonth(d.getUTCMonth() + 1);
+  else if (freq === 'yearly')  d.setUTCFullYear(d.getUTCFullYear() + 1);
   return d.toISOString().slice(0, 10);
 }
 // Sum monetary amounts in integer cents to avoid floating-point drift
@@ -86,13 +87,37 @@ function makeTXF(txns, yr, bizName) {
   Object.values(agg).forEach((a) => lines.push("TD", a.type === "income" ? "N521" : "N522", `C${a.line}`, `L${(a.totalCents / 100).toFixed(2)}`, `$${a.label}`, "^"));
   return lines.join("\r\n");
 }
-function makeCSV(txns, yr) {
-  return "Date,Type,Category,Description,Amount,Vendor,Schedule C Line,Scope\n" + txns.filter((t) => t.date?.startsWith(String(yr))).map((t) => {
-    const c = [...SCHEDULE_C, ...INC_CATS].find((c) => c.code === t.category);
-    return `${t.date},${t.type},${c?.label || ""},${(t.description || "").replace(/,/g, ";")},${t.amount.toFixed(2)},${(t.vendor || "").replace(/,/g, ";")},${c?.line || ""},${t.scope || "business"}`;
-  }).join("\n");
+// CSV cell escaper. Defends against CSV injection (CWE-1236) where a malicious
+// vendor name like "=cmd|'/c calc'!A1" would execute a formula when opened in
+// Excel/Sheets. Prefixes formula triggers with a single quote and quotes any
+// cell containing a delimiter or special character.
+function csvCell(v) {
+  let s = v == null ? '' : String(v);
+  // Formula-injection prefix — Excel, LibreOffice, and Google Sheets all treat
+  // these as the start of a formula. Prefixing with a single quote forces them
+  // to be interpreted as text.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  // Escape double quotes by doubling them, then wrap if the cell contains
+  // anything that would break CSV row parsing.
+  if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
 }
-function dlFile(c, n, m) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], { type: m })); a.download = n; a.click(); }
+function csvRow(arr) { return arr.map(csvCell).join(','); }
+
+function makeCSV(txns, yr) {
+  const header = csvRow(["Date","Type","Category","Description","Amount","Vendor","Schedule C Line","Scope"]);
+  const body = txns.filter((t) => t.date?.startsWith(String(yr))).map((t) => {
+    const c = [...SCHEDULE_C, ...INC_CATS].find((c) => c.code === t.category);
+    return csvRow([t.date, t.type, c?.label || "", t.description || "", t.amount.toFixed(2), t.vendor || "", c?.line || "", t.scope || "business"]);
+  }).join("\n");
+  return header + "\n" + body;
+}
+function dlFile(c, n, m) {
+  const url = URL.createObjectURL(new Blob([c], { type: m }));
+  const a = document.createElement("a");
+  a.href = url; a.download = n; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 function I({ name, size = 18 }) {
@@ -224,6 +249,8 @@ function App() {
   }, []);
 
   // ── Recurring transaction auto-create ─────────────────────────────────────
+  // Catches up missed instances: if a monthly recurring was last due 3 months
+  // ago, this creates 3 instances and advances nextDue past today.
   useEffect(() => {
     if (loading || !bizId || recurringChecked.current === bizId) return;
     recurringChecked.current = bizId;
@@ -232,19 +259,35 @@ function App() {
     if (due.length === 0) return;
     (async () => {
       const created = [];
-      for (const tpl of due) {
-        // Create a new instance for the due date (no receipt, no recurring flag)
-        const { recurring, receiptFile, ...rest } = tpl;
-        const instance = { ...rest, id: uid(), date: recurring.nextDue, recurring: null };
-        await put('transactions', instance);
-        // Advance the template's nextDue
-        await put('transactions', { ...tpl, recurring: { ...recurring, nextDue: calcNextDue(recurring.nextDue, recurring.freq) } });
-        created.push(`${tpl.vendor || tpl.description} (${$(tpl.amount)})`);
+      try {
+        for (const tpl of due) {
+          const { recurring, receiptFile, ...rest } = tpl;
+          let cursor = recurring.nextDue;
+          // Catch-up loop — generate one instance per missed period, capped at 60
+          // to prevent runaway loops if data is corrupt.
+          let safety = 0;
+          while (cursor <= today && safety < 60) {
+            const instance = { ...rest, id: uid(), date: cursor, recurring: null };
+            await put('transactions', instance);
+            created.push(`${tpl.vendor || tpl.description} (${$(tpl.amount)}) — ${cursor}`);
+            cursor = calcNextDue(cursor, recurring.freq);
+            safety++;
+          }
+          // Persist the advanced nextDue on the template
+          await put('transactions', { ...tpl, recurring: { ...recurring, nextDue: cursor } });
+        }
+        reload();
+        if (created.length) {
+          setSuccessToast({ msg: `${created.length} recurring transaction${created.length > 1 ? 's' : ''} auto-added`, items: created });
+        }
+      } catch (e) {
+        console.error('[recurring] auto-create failed:', e);
+        // Reset guard so user can retry by switching businesses or reloading
+        recurringChecked.current = null;
+        setGlobalError?.('Recurring auto-create failed: ' + (e.message || String(e)));
       }
-      reload();
-      setSuccessToast({ msg: `${created.length} recurring transaction${created.length > 1 ? 's' : ''} auto-added`, items: created });
     })();
-  }, [loading, bizId, bTxns]);
+  }, [loading, bizId]);
 
   // Auto-updater events via preload
   useEffect(() => {
@@ -369,7 +412,7 @@ function App() {
         }
       </main>
       {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={() => { reload(); close(); }} onClose={close} />}
-      {modal?.t === "csv-import" && <CsvImportModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={(count) => { reload(); setSuccessToast({ msg: `${count} transaction${count !== 1 ? "s" : ""} imported from CSV`, items: [] }); close(); }} onClose={close} />}
+      {modal?.t === "csv-import" && <CsvImportModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={(count, failures) => { reload(); setSuccessToast({ msg: `${count} transaction${count !== 1 ? "s" : ""} imported from CSV${failures && failures.length ? ` (${failures.length} skipped)` : ""}`, items: [] }); if (failures && failures.length) setGlobalError(`${failures.length} row${failures.length !== 1 ? "s" : ""} could not be imported. First error: ${failures[0]}`); close(); }} onClose={close} />}
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
@@ -673,7 +716,7 @@ function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
       rows.push([m, inc.toFixed(2), exp.toFixed(2), (inc - exp).toFixed(2)]);
     });
     rows.push(["TOTAL", (totalIncCents / 100).toFixed(2), (totalExpCents / 100).toFixed(2), ((totalIncCents - totalExpCents) / 100).toFixed(2)]);
-    dlFile(rows.map((r) => r.join(",")).join("\n"), `PnL_${year}.csv`, "text/csv");
+    dlFile(rows.map(csvRow).join("\n"), `PnL_${year}.csv`, "text/csv");
   };
 
   return <div>
@@ -734,8 +777,8 @@ function ExpV({ txns, year, yTxns, miles, totInc, totExp, mileDed, biz, bc }) {
       {[
         { title: "TXF", desc: "TurboTax import", ext: ".txf", fn: () => dlFile(makeTXF(txns, year, biz?.name), `${bn}_${year}.txf`, "text/plain"), icon: "file" },
         { title: "CSV", desc: "Excel / Sheets", ext: ".csv", fn: () => dlFile(makeCSV(txns, year), `${bn}_${year}.csv`, "text/csv"), icon: "chart" },
-        { title: "Mileage", desc: "IRS mileage log", ext: ".csv", fn: () => { const h = "Date,Purpose,From,To,Miles,Deduction\n"; const r = yMi.map((m) => `${m.date},${(m.purpose||"").replace(/,/g,";")},${m.from||""},${m.to||""},${m.miles.toFixed(1)},${(m.miles*MILE_RATE).toFixed(2)}`).join("\n"); dlFile(h + r, `${bn}_miles_${year}.csv`, "text/csv"); }, icon: "car" },
-        { title: "1099", desc: "Contractor summary", ext: ".csv", fn: async () => { const cs = (await getAll("contractors")).filter((c) => c.bizId === biz?.id); const at = (await getAll("transactions")).filter((t) => t.date?.startsWith(String(year)) && t.bizId === biz?.id); const h = "Name,EIN,Email,Paid,1099?\n"; const r = cs.map((c) => { const p = at.filter((t) => t.contractorId === c.id).reduce((s, t) => s + t.amount, 0); return `${c.name},${c.ein||""},${c.email||""},${p.toFixed(2)},${p >= 600 ? "Yes" : "No"}`; }).join("\n"); dlFile(h + r, `${bn}_1099_${year}.csv`, "text/csv"); }, icon: "users" },
+        { title: "Mileage", desc: "IRS mileage log", ext: ".csv", fn: () => { const h = csvRow(["Date","Purpose","From","To","Miles","Deduction"]) + "\n"; const r = yMi.map((m) => csvRow([m.date, m.purpose||"", m.from||"", m.to||"", m.miles.toFixed(1), (m.miles*MILE_RATE).toFixed(2)])).join("\n"); dlFile(h + r, `${bn}_miles_${year}.csv`, "text/csv"); }, icon: "car" },
+        { title: "1099", desc: "Contractor summary", ext: ".csv", fn: async () => { const cs = (await getAll("contractors")).filter((c) => c.bizId === biz?.id); const at = (await getAll("transactions")).filter((t) => t.date?.startsWith(String(year)) && t.bizId === biz?.id); const h = csvRow(["Name","EIN","Email","Paid","1099?"]) + "\n"; const r = cs.map((c) => { const p = at.filter((t) => t.contractorId === c.id).reduce((s, t) => s + t.amount, 0); return csvRow([c.name, c.ein||"", c.email||"", p.toFixed(2), p >= 600 ? "Yes" : "No"]); }).join("\n"); dlFile(h + r, `${bn}_1099_${year}.csv`, "text/csv"); }, icon: "users" },
       ].map((e) => <Card key={e.title} style={{ textAlign: "center" }}><div style={{ color: bc, marginBottom: 8 }}><I name={e.icon} size={28} /></div><h4 style={{ margin: "0 0 4px", color: "#f9fafb", fontSize: 14 }}>{e.title}</h4><p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 14px" }}>{e.desc}</p><Btn onClick={e.fn} disabled={ct === 0}><I name="download" size={14} /> {e.ext}</Btn></Card>)}
     </div>
   </div>;
@@ -900,17 +943,35 @@ function CsvImportModal({ bizId, onSave, onDone, onClose }) {
   const [cols, setCols] = useState({ dateCol: -1, amtCol: -1, descCol: -1 });
   const [rows, setRows] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileRef = useRef();
 
-  const parseLine = (line) => {
-    const out = []; let cur = ''; let inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      if (line[i] === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-      else if (line[i] === ',' && !inQ) { out.push(cur.trim()); cur = ''; }
-      else cur += line[i];
+  // Full RFC 4180-ish CSV parser. Handles quoted fields containing commas,
+  // newlines, and escaped quotes ("") — operates over whole text, not per-line.
+  const parseCSV = (text) => {
+    const rows = [];
+    let cur = '';
+    let row = [];
+    let inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; }
+          else inQ = false;
+        } else cur += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ',') { row.push(cur); cur = ''; }
+        else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else if (c === '\r') { /* swallow — handled by \n */ }
+        else cur += c;
+      }
     }
-    out.push(cur.trim());
-    return out;
+    // Flush trailing field/row
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    // Drop fully-empty trailing rows
+    return rows.filter(r => r.length > 1 || (r.length === 1 && r[0].trim() !== ''));
   };
 
   const normalizeDate = (raw2) => {
@@ -919,50 +980,108 @@ function CsvImportModal({ bizId, onSave, onDone, onClose }) {
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
     if (m) { const yr = m[3].length === 2 ? '20' + m[3] : m[3]; return `${yr}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
-    try { const d = new Date(s); if (!isNaN(d)) return d.toISOString().slice(0, 10); } catch (_) {}
+    try {
+      const d = new Date(s);
+      if (!isNaN(d)) {
+        // UTC-anchor to avoid TZ shift on .toISOString()
+        const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        return u.toISOString().slice(0, 10);
+      }
+    } catch (_) {}
     return '';
   };
 
   const buildPreview = (dataRows, c) => {
     const result = dataRows.map((row, i) => {
-      const rawAmt = parseFloat((row[c.amtCol] || '').replace(/[$,\s]/g, '')) || 0;
+      let amtStr = (row[c.amtCol] || '').trim();
+      // Detect parentheses as negative (accounting CSVs): "(123.45)" → -123.45
+      let parenNeg = false;
+      if (/^\(.*\)$/.test(amtStr)) { parenNeg = true; amtStr = amtStr.slice(1, -1); }
+      const cleaned = amtStr.replace(/[$,\s"']/g, '');
+      let rawAmt = parseFloat(cleaned) || 0;
+      if (parenNeg) rawAmt = -Math.abs(rawAmt);
       const amount = Math.abs(rawAmt);
       const type = rawAmt >= 0 ? 'income' : 'expense';
-      return { id: i, sel: true, date: normalizeDate(row[c.dateCol]), description: (row[c.descCol] || '').replace(/^["']|["']$/g, '').slice(0, 80), amount, type, category: (type === 'income' ? INC_CATS : SCHEDULE_C)[0]?.code || '' };
+      return {
+        id: i,
+        sel: true,
+        date: normalizeDate(row[c.dateCol]),
+        description: (row[c.descCol] || '').replace(/^["']|["']$/g, '').slice(0, 80),
+        amount,
+        type,
+        category: (type === 'income' ? INC_CATS : SCHEDULE_C)[0]?.code || '',
+      };
     }).filter(r => r.amount > 0 && r.date);
     setRows(result);
   };
 
+  const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+  const MAX_ROWS = 50000;
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 2) return;
-    const headers = parseLine(lines[0]).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
-    const dataRows = lines.slice(1).filter(l => l.trim()).map(parseLine);
-    const find = (pats) => headers.findIndex(h => pats.some(p => h.includes(p)));
-    const detected = {
-      dateCol: find(['date']),
-      amtCol: find(['amount', 'amt', 'debit', 'credit']),
-      descCol: find(['description', 'payee', 'merchant', 'memo', 'narrative', 'name']),
-    };
-    setRaw({ headers, rows: dataRows });
-    setCols(detected);
-    if (detected.dateCol >= 0 && detected.amtCol >= 0 && detected.descCol >= 0) { buildPreview(dataRows, detected); setStep('preview'); }
-    else setStep('map');
-    e.target.value = '';
+    setUploadError('');
+    try {
+      if (file.size > MAX_BYTES) {
+        setUploadError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 25 MB.`);
+        e.target.value = '';
+        return;
+      }
+      let text = await file.text();
+      // Strip UTF-8 BOM if present
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const allRows = parseCSV(text);
+      if (allRows.length < 2) {
+        setUploadError('CSV appears empty or has no data rows.');
+        e.target.value = '';
+        return;
+      }
+      if (allRows.length > MAX_ROWS + 1) {
+        setUploadError(`File has ${allRows.length - 1} rows. Maximum is ${MAX_ROWS}.`);
+        e.target.value = '';
+        return;
+      }
+      const headers = allRows[0].map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+      const dataRows = allRows.slice(1);
+      const find = (pats) => headers.findIndex(h => pats.some(p => h.includes(p)));
+      const detected = {
+        dateCol: find(['date']),
+        amtCol: find(['amount', 'amt', 'debit', 'credit']),
+        descCol: find(['description', 'payee', 'merchant', 'memo', 'narrative', 'name']),
+      };
+      setRaw({ headers, rows: dataRows });
+      setCols(detected);
+      if (detected.dateCol >= 0 && detected.amtCol >= 0 && detected.descCol >= 0) {
+        buildPreview(dataRows, detected);
+        setStep('preview');
+      } else {
+        setStep('map');
+      }
+    } catch (err) {
+      console.error('[csv-import] handleFile failed:', err);
+      setUploadError('Could not read file: ' + (err.message || String(err)));
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const selCount = rows.filter(r => r.sel).length;
 
   const doImport = async () => {
     setSaving(true);
+    const failures = [];
+    let imported = 0;
     try {
       for (const r of rows.filter(r => r.sel)) {
-        await onSave({ id: uid(), bizId, type: r.type, date: r.date, description: r.description, amount: r.amount, category: r.category, vendor: '', notes: '', scope: 'business', receiptFile: null, recurring: null });
+        try {
+          await onSave({ id: uid(), bizId, type: r.type, date: r.date, description: r.description, amount: r.amount, category: r.category, vendor: '', notes: '', scope: 'business', receiptFile: null, recurring: null });
+          imported++;
+        } catch (e) {
+          failures.push(`Row ${r.id + 1} (${r.date} ${r.description}): ${e.message || String(e)}`);
+        }
       }
-      onDone(selCount);
+      onDone(imported, failures);
     } finally { setSaving(false); }
   };
 
@@ -975,6 +1094,11 @@ function CsvImportModal({ bizId, onSave, onDone, onClose }) {
           <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
           <p style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6, marginBottom: 6 }}>Import transactions from your bank's CSV export.</p>
           <p style={{ color: '#64748b', fontSize: 12, marginBottom: 24 }}>Compatible with Chase, Bank of America, Wells Fargo, and most banks.<br />Negative amounts = Expense - Positive amounts = Income</p>
+          {uploadError && (
+            <div style={{ background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.4)', color: '#fca5a5', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, textAlign: 'left' }}>
+              {uploadError}
+            </div>
+          )}
           <Btn onClick={() => fileRef.current?.click()}><I name="plus" size={15} /> Choose CSV File</Btn>
         </div>
       )}
@@ -1054,13 +1178,13 @@ function CsvImportModal({ bizId, onSave, onDone, onClose }) {
     </Modal>
   );
 }
-
 function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) {
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
   const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null, recurringEnabled: !!(prefill.recurring?.freq), recurringFreq: prefill.recurring?.freq || "monthly" });
   const [viewRcpt, setViewRcpt] = useState(false);
   const [scan, setScan] = useState({ busy: false, pct: 0, status: "", error: "" });
   const attachRef = useRef();
+  const initialDate = useRef(prefill.date || null); // snapshot at mount; lets scanReceipt know whether the user has changed the date
   const attachReceipt = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -1075,28 +1199,39 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
     if (!f.receiptFile) { console.warn('[App] No receiptFile — aborting scan'); return; }
     if (scan.busy) { console.warn('[App] Scan already in progress — aborting'); return; }
     setScan({ busy: true, pct: 0, status: "Starting…", error: "" });
+
+    const OCR_TIMEOUT_MS = 90_000;
+    let timeoutId = null;
+    const ocrPromise = ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
+      console.log('[App] OCR progress:', status, Math.round(pct * 100) + '%');
+      setScan(s => ({ ...s, status, pct }));
+    });
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        // Cancel the worker — otherwise it keeps running and chewing CPU
+        try { ocrPromise.cancel?.(); } catch (_) {}
+        reject(new Error('Scan timed out after 90s — try a clearer or smaller image'));
+      }, OCR_TIMEOUT_MS);
+    });
+
     try {
-      const OCR_TIMEOUT_MS = 90_000;
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Scan timed out after 90s — try a clearer or smaller image')), OCR_TIMEOUT_MS)
-      );
-      const result = await Promise.race([
-        ocrReceiptFile(f.receiptFile, ({ status, pct }) => {
-          console.log('[App] OCR progress:', status, Math.round(pct * 100) + '%');
-          setScan(s => ({ ...s, status, pct }));
-        }),
-        timeoutPromise,
-      ]);
+      const result = await Promise.race([ocrPromise, timeoutPromise]);
+      // Clear the pending timeout — otherwise it would still fire and try to
+      // cancel an already-finished worker.
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
       console.log('[App] OCR result:', result);
       setF(prev => ({
         ...prev,
-        ...(result.date && { date: result.date }),
-        ...(result.amount && { amount: String(result.amount) }),
+        // Only fill date if user hasn't changed it from its initial value
+        ...(result.date && prev.date === initialDate.current && { date: result.date }),
+        // Only fill amount if user hasn't typed anything yet
+        ...(result.amount && !prev.amount && { amount: String(result.amount) }),
         ...(result.vendor && !prev.vendor && { vendor: result.vendor }),
         ...(result.description && !prev.description && { description: result.description }),
       }));
       setScan({ busy: false, pct: 1, status: "Done", error: "" });
     } catch (err) {
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
       const msg = err?.message || err?.toString() || "OCR failed (unknown error)";
       console.error('[App] OCR error:', err);
       setScan({ busy: false, pct: 0, status: "", error: msg });

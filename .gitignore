@@ -9,3 +9,5 @@ Thumbs.db
 .env
 .env.local
 *.exe
+# OCR assets — generated at build time by scripts/setup-ocr-assets.cjs
+public/tesseract/

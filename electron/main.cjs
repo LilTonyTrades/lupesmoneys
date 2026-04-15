@@ -205,16 +205,58 @@ function findUpdaterInstaller() {
   return null;
 }
 
+
+// Verify Authenticode signature on a .exe via PowerShell. Synchronous so we
+// can gate spawn() on the result. Returns { ok, reason, signer }.
+function verifyInstallerSignature(filePath) {
+  // Skip on non-Windows (no Authenticode) — we only build NSIS for win32 today.
+  if (process.platform !== 'win32') return { ok: true, reason: 'non-win32', signer: 'n/a' };
+  try {
+    const { execFileSync } = require('child_process');
+    // PowerShell returns Status (Valid/NotSigned/...) and SignerCertificate.Subject
+    const cmd = `(Get-AuthenticodeSignature -FilePath '${filePath.replace(/'/g, "''")}') | Select-Object -Property Status,@{Name='Signer';Expression={$_.SignerCertificate.Subject}} | ConvertTo-Json -Compress`;
+    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], { timeout: 10000, encoding: 'utf8' });
+    const info = JSON.parse(out.trim() || '{}');
+    if (info.Status !== 'Valid') return { ok: false, reason: 'Status=' + info.Status, signer: info.Signer || '' };
+    // Require the configured publisher name to appear in the signer subject.
+    // Mirrors the publisherName field in package.json's electron-builder config.
+    const required = 'LilTonyTrades';
+    if (!info.Signer || !info.Signer.includes(required)) {
+      return { ok: false, reason: 'Signer mismatch: ' + (info.Signer || '<none>'), signer: info.Signer || '' };
+    }
+    return { ok: true, reason: 'valid', signer: info.Signer };
+  } catch (e) {
+    return { ok: false, reason: 'verify error: ' + e.message, signer: '' };
+  }
+}
+
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-app-version', () => app.getVersion());
-ipcMain.on('install-update', () => {
+ipcMain.on('install-update', (event) => {
+  // #14 — Verify sender frame is our top-level window. Stops malicious iframe
+  // (in case CSP ever fails) or compromised renderer subframe from triggering
+  // an installer launch.
+  if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    console.warn('[updater] install-update rejected: sender frame mismatch');
+    return;
+  }
   app.isQuitting = true;
 
   const installerPath = findUpdaterInstaller();
 
   if (installerPath) {
+    // #3 — Verify the installer is signed by our publisher before launching.
+    // electron-updater's downloads can in principle be tampered with by another
+    // local process between download and execution, so we re-check signature.
+    const verifyResult = verifyInstallerSignature(installerPath);
+    if (!verifyResult.ok) {
+      console.error('[updater] REFUSING to spawn unsigned/invalid installer:', verifyResult.reason);
+      try { mainWindow?.webContents.send('update-error', 'Installer signature verification failed: ' + verifyResult.reason); } catch (_) {}
+      app.isQuitting = false; // Allow the user to keep using the app
+      return;
+    }
     // Spawn the installer as a completely independent process, then exit.
-    console.log('[updater] Spawning installer:', installerPath);
+    console.log('[updater] Spawning installer:', installerPath, '(signed by:', verifyResult.signer + ')');
     try {
       require('child_process').spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
     } catch (e) {
@@ -237,7 +279,11 @@ ipcMain.on('install-update', () => {
     app.exit(0);
   }, 400);
 });
-ipcMain.on('check-for-update', () => {
+ipcMain.on('check-for-update', (event) => {
+  if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    console.warn('[updater] check-for-update rejected: sender frame mismatch');
+    return;
+  }
   try { require('electron-updater').autoUpdater.checkForUpdates().catch(() => {}); } catch (_) {}
 });
 
@@ -261,8 +307,10 @@ function setupAutoUpdater(win) {
     win.webContents.send('update-available', { version: info.version });
   });
 
-  updater.on('update-not-available', () =>
-    win.webContents.send('update-not-available'));
+  updater.on('update-not-available', () => {
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    win.webContents.send('update-not-available');
+  });
 
   updater.on('download-progress', (p) => {
     win.webContents.send('update-progress', p);
