@@ -107,6 +107,11 @@ function parseReceiptText(text) {
   const genericDocWordRe = /^(receipt|invoice|statement|bill|order|confirmation|payment|purchase|transaction|summary|quote|estimate)s?\b/i;
   let vendor = '';
 
+  // Metadata label prefixes that are never a vendor name
+  const metadataRe = /^(date|invoice\s*(number|#|no\.?)|receipt\s*(number|#|no\.?)|bill\s*to|ship\s*to|sold\s*to|order\s*(number|#|no\.?)|paid|payment|amount\s*paid|sub\s*total|total|tax|from|to)\b/i;
+  // Spelled-out date pattern (e.g. "March 16, 2026" or "April 14 2026")
+  const spelledDateRe = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+\d{4}/i;
+
   // Pass 1: first non-noise line in top 8, skipping generic doc words
   for (const line of lines.slice(0, 8)) {
     if (/^\d[\d\s\-(). ]{6,}$/.test(line)) continue;
@@ -116,6 +121,8 @@ function parseReceiptText(text) {
     if (/\d{4}[-\/]\d{2}/.test(line)) continue;
     if (line.length < 2) continue;
     if (genericDocWordRe.test(line)) continue;
+    if (metadataRe.test(line)) continue;
+    if (spelledDateRe.test(line)) continue;
     // Skip lines that are just symbols / OCR noise (no real letters)
     if (!/[a-zA-Z]{2}/.test(line)) continue;
     vendor = line.slice(0, 60);
