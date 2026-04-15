@@ -358,8 +358,8 @@ function App() {
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 80px" }}>
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
         : view === "dashboard" ? <Dash {...{ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc }} />
-        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
-        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
+        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
+        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} onAdd={() => setModal({ t: "inv", d: {} })} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
@@ -369,6 +369,7 @@ function App() {
         }
       </main>
       {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={() => { reload(); close(); }} onClose={close} />}
+      {modal?.t === "csv-import" && <CsvImportModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={(count) => { reload(); setSuccessToast({ msg: `${count} transaction${count !== 1 ? "s" : ""} imported from CSV`, items: [] }); close(); }} onClose={close} />}
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
@@ -586,7 +587,7 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
 }
 
 // ─── TXN LIST ────────────────────────────────────────────────────────────────
-function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onEdit, onDelete, bc }) {
+function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit, onDelete, bc }) {
   const [scope, setScope] = useState("all");
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
@@ -605,6 +606,7 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onEdit, onDelete, bc
             ? <Btn onClick={onBatchScan} v="ghost" title="Scan multiple receipts at once"><I name="layers" size={15} /> Batch Scan</Btn>
             : <Btn v="ghost" title="Upgrade to Pro" style={{ opacity: 0.45, cursor: "default" }} onClick={() => {}}><I name="lock" size={14} /> Batch Scan <span style={{ fontSize: 10, background: "#f59e0b", color: "#000", borderRadius: 4, padding: "1px 5px", marginLeft: 3, fontWeight: 700 }}>PRO</span></Btn>
         )}
+        <Btn v="ghost" onClick={onImportCSV} title="Import from bank CSV"><I name="download" size={15} /> Import CSV</Btn>
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
@@ -886,6 +888,168 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
             </div>
           )}
         </>
+      )}
+    </Modal>
+  );
+}
+
+// ─── CSV Import Modal ─────────────────────────────────────────────────────────
+function CsvImportModal({ bizId, onSave, onDone, onClose }) {
+  const [step, setStep] = useState('upload'); // upload | map | preview
+  const [raw, setRaw] = useState(null);       // { headers, rows }
+  const [cols, setCols] = useState({ dateCol: -1, amtCol: -1, descCol: -1 });
+  const [rows, setRows] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef();
+
+  const parseLine = (line) => {
+    const out = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+      else if (line[i] === ',' && !inQ) { out.push(cur.trim()); cur = ''; }
+      else cur += line[i];
+    }
+    out.push(cur.trim());
+    return out;
+  };
+
+  const normalizeDate = (raw2) => {
+    const s = (raw2 || '').trim().replace(/^["']|["']$/g, '');
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (m) { const yr = m[3].length === 2 ? '20' + m[3] : m[3]; return `${yr}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
+    try { const d = new Date(s); if (!isNaN(d)) return d.toISOString().slice(0, 10); } catch (_) {}
+    return '';
+  };
+
+  const buildPreview = (dataRows, c) => {
+    const result = dataRows.map((row, i) => {
+      const rawAmt = parseFloat((row[c.amtCol] || '').replace(/[$,\s]/g, '')) || 0;
+      const amount = Math.abs(rawAmt);
+      const type = rawAmt >= 0 ? 'income' : 'expense';
+      return { id: i, sel: true, date: normalizeDate(row[c.dateCol]), description: (row[c.descCol] || '').replace(/^["']|["']$/g, '').slice(0, 80), amount, type, category: (type === 'income' ? INC_CATS : SCHEDULE_C)[0]?.code || '' };
+    }).filter(r => r.amount > 0 && r.date);
+    setRows(result);
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return;
+    const headers = parseLine(lines[0]).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+    const dataRows = lines.slice(1).filter(l => l.trim()).map(parseLine);
+    const find = (pats) => headers.findIndex(h => pats.some(p => h.includes(p)));
+    const detected = {
+      dateCol: find(['date']),
+      amtCol: find(['amount', 'amt', 'debit', 'credit']),
+      descCol: find(['description', 'payee', 'merchant', 'memo', 'narrative', 'name']),
+    };
+    setRaw({ headers, rows: dataRows });
+    setCols(detected);
+    if (detected.dateCol >= 0 && detected.amtCol >= 0 && detected.descCol >= 0) { buildPreview(dataRows, detected); setStep('preview'); }
+    else setStep('map');
+    e.target.value = '';
+  };
+
+  const selCount = rows.filter(r => r.sel).length;
+
+  const doImport = async () => {
+    setSaving(true);
+    try {
+      for (const r of rows.filter(r => r.sel)) {
+        await onSave({ id: uid(), bizId, type: r.type, date: r.date, description: r.description, amount: r.amount, category: r.category, vendor: '', notes: '', scope: 'business', receiptFile: null, recurring: null });
+      }
+      onDone(selCount);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Import from CSV" onClose={onClose} w={720}>
+      <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
+
+      {step === 'upload' && (
+        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+          <p style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6, marginBottom: 6 }}>Import transactions from your bank's CSV export.</p>
+          <p style={{ color: '#64748b', fontSize: 12, marginBottom: 24 }}>Compatible with Chase, Bank of America, Wells Fargo, and most banks.<br />Negative amounts = Expense - Positive amounts = Income</p>
+          <Btn onClick={() => fileRef.current?.click()}><I name="plus" size={15} /> Choose CSV File</Btn>
+        </div>
+      )}
+
+      {step === 'map' && raw && (
+        <div>
+          <p style={{ color: '#f97316', fontSize: 13, marginBottom: 16 }}>Could not auto-detect all columns. Select which columns map to each field:</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+            {[['dateCol', 'Date (required)'], ['amtCol', 'Amount (required)'], ['descCol', 'Description (required)']].map(([key, label]) => (
+              <Field key={key} label={label}>
+                <select value={cols[key]} onChange={(e) => setCols({ ...cols, [key]: +e.target.value })} style={inp}>
+                  <option value={-1}>Select column</option>
+                  {raw.headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                </select>
+              </Field>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Btn v="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn onClick={() => { buildPreview(raw.rows, cols); setStep('preview'); }} disabled={cols.dateCol < 0 || cols.amtCol < 0 || cols.descCol < 0}>Next</Btn>
+          </div>
+        </div>
+      )}
+
+      {step === 'preview' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}>{selCount} of {rows.length} rows selected</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Btn v="ghost" onClick={() => setRows(rows.map(r => ({ ...r, sel: true })))}>All</Btn>
+              <Btn v="ghost" onClick={() => setRows(rows.map(r => ({ ...r, sel: false })))}>None</Btn>
+              <Btn v="ghost" onClick={() => fileRef.current?.click()}>New File</Btn>
+            </div>
+          </div>
+          <div style={{ maxHeight: 360, overflowY: 'auto', borderRadius: 8, border: '1px solid rgba(255,255,255,.06)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ position: 'sticky', top: 0, background: 'rgba(15,15,26,.98)', zIndex: 1 }}>
+                  {['', 'Date', 'Description', 'Amount', 'Type', 'Category'].map((h, i) => (
+                    <th key={i} style={{ textAlign: i === 3 ? 'right' : i === 0 ? 'center' : 'left', padding: '8px 10px', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: .6, borderBottom: '1px solid rgba(255,255,255,.08)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,.03)', opacity: r.sel ? 1 : 0.3 }}>
+                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                      <input type="checkbox" checked={r.sel} onChange={(e) => setRows(rows.map(x => x.id === r.id ? { ...x, sel: e.target.checked } : x))} style={{ accentColor: '#6366f1' }} />
+                    </td>
+                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#94a3b8' }}>{r.date}</td>
+                    <td style={{ padding: '6px 10px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: r.type === 'income' ? '#22c55e' : '#ef4444' }}>${r.amount.toFixed(2)}</td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <select value={r.type} onChange={(e) => { const t2 = e.target.value; setRows(rows.map(x => x.id === r.id ? { ...x, type: t2, category: (t2 === 'income' ? INC_CATS : SCHEDULE_C)[0]?.code || '' } : x)); }} style={{ ...inp, width: 90, fontSize: 11, padding: '2px 6px' }}>
+                        <option value="income">Income</option>
+                        <option value="expense">Expense</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <select value={r.category} onChange={(e) => setRows(rows.map(x => x.id === r.id ? { ...x, category: e.target.value } : x))} style={{ ...inp, fontSize: 11, padding: '2px 6px' }}>
+                        {(r.type === 'income' ? INC_CATS : SCHEDULE_C).map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Btn v="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn v="green" onClick={doImport} disabled={selCount === 0 || saving}>
+              {saving ? 'Importing...' : `Import ${selCount} Transaction${selCount !== 1 ? 's' : ''}`}
+            </Btn>
+          </div>
+        </div>
       )}
     </Modal>
   );
