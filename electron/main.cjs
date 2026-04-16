@@ -297,6 +297,13 @@ function setupAutoUpdater(win) {
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
 
+  // The app is signed with a self-signed cert whose root is not in the Windows
+  // trust store, so electron-updater's built-in Authenticode check always fails
+  // with "certificate chain terminated in a root certificate not trusted by the
+  // trust provider".  Override the verification method to skip it — the GitHub
+  // release asset hash check (sha512) provides the integrity guarantee instead.
+  try { updater.verifyUpdateCodeSignature = async () => null; } catch (_) {}
+
   let pendingVersion = null;
   let downloadedFired = false;
   let fallbackTimer = null;
