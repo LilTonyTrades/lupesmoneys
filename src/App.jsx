@@ -364,7 +364,7 @@ function App() {
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0f0f1a,#1a1a2e 50%,#16213e)", color: "#e2e8f0", minHeight: "100vh", fontSize: 14 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}@media print{body *{visibility:hidden!important}.ocb-invoice-paper,.ocb-invoice-paper *{visibility:visible!important}.ocb-invoice-paper{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;background:#fff!important;z-index:99999!important;overflow:visible!important;box-shadow:none!important;border:none!important;border-radius:0!important}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}@media print{body *{visibility:hidden!important}.ocb-invoice-paper,.ocb-invoice-paper *,.ocb-schedC-paper,.ocb-schedC-paper *{visibility:visible!important}.ocb-invoice-paper,.ocb-schedC-paper{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;background:#fff!important;z-index:99999!important;overflow:visible!important;box-shadow:none!important;border:none!important;border-radius:0!important}}`}</style>
 
       {/* HEADER */}
       <header style={{ background: "rgba(15,15,26,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "10px 20px", position: "sticky", top: 0, zIndex: 100 }}>
@@ -428,7 +428,7 @@ function App() {
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
-        : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} />
+        : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} biz={biz} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
@@ -1349,8 +1349,9 @@ function ConV({ contractors, txns, biz, year, onAdd, onEdit, onDelete, onDetail,
 }
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
-function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax, bc }) {
+function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax, bc, biz }) {
   const [tab, setTab] = useState("pnl");
+  const [showSchedC, setShowSchedC] = useState(false);
 
   // Use integer-cent summation to avoid floating-point drift
   const expByCat = {}, incByCat = {};
@@ -1405,11 +1406,16 @@ function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax
       {[["Gross Income", $(totInc), "#22c55e"], ["Total Deductions", `(${$(totExp + mileDed)})`, "#ef4444"], ["  ↳ Business Expenses", $(totExp), "#94a3b8"], ["  ↳ Mileage", $(mileDed), "#94a3b8"], ["Net Profit", $(net), "#3b82f6"], ["SE Base (92.35%)", $(net * 0.9235), "#8b5cf6"], ["SE Tax (15.3%)", $(seTax), "#f59e0b"], ["Quarterly Est.", $(seTax / 4), "#06b6d4"]].map(([l, v, c], i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 7 ? "1px solid rgba(255,255,255,.04)" : "2px solid rgba(255,255,255,.1)", fontSize: l.startsWith("  ") ? 12 : 14, fontWeight: i >= 6 ? 700 : 400 }}><span style={{ color: l.startsWith("  ") ? "#64748b" : "#d1d5db" }}>{l}</span><span style={{ color: c, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{v}</span></div>)}
       <div style={{ marginTop: 16, padding: 12, background: "rgba(6,182,212,.08)", borderRadius: 8, fontSize: 12, color: "#67e8f9" }}>Due dates: Apr 15, Jun 15, Sep 15, Jan 15.</div>
     </Card>}
-    {tab === "sched" && <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Line", "Category", "Amount"].map((h, i) => <th key={i} style={{ textAlign: i === 2 ? "right" : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead><tbody>
+    {tab === "sched" && <div>
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <Btn onClick={() => setShowSchedC(true)} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print Schedule C</Btn>
+    </div>
+    <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Line", "Category", "Amount"].map((h, i) => <th key={i} style={{ textAlign: i === 2 ? "right" : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead><tbody>
       {INC_CATS.map((cat) => { const t = txns.filter((x) => x.type === "income" && x.category === cat.code).reduce((s, x) => s + x.amount, 0); return t > 0 ? <tr key={cat.code} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{cat.line}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{cat.label}</td><td style={{ padding: "10px 12px", textAlign: "right", color: "#22c55e", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(t)}</td></tr> : null; })}
       {SCHEDULE_C.map((cat) => { const t = txns.filter((x) => x.type === "expense" && x.category === cat.code).reduce((s, x) => s + x.amount, 0); const clr = CAT_COLORS[cat.code] || "#ef4444"; return t > 0 ? <tr key={cat.code} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{cat.line}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: clr, flexShrink: 0 }} />{cat.label}</span></td><td style={{ padding: "10px 12px", textAlign: "right", color: clr, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(t)}</td></tr> : null; })}
       {miles.length > 0 && <tr><td style={{ padding: "10px 12px", fontSize: 13 }}>9</td><td style={{ padding: "10px 12px", fontSize: 13 }}>Car & truck (mileage)</td><td style={{ padding: "10px 12px", textAlign: "right", color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(miles.reduce((s, m) => s + m.miles * MILE_RATE, 0))}</td></tr>}
-    </tbody></table></Card>}
+    </tbody></table></Card></div>}
+    {showSchedC && <ScheduleCPrint txns={txns} miles={miles} biz={biz} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} onClose={() => setShowSchedC(false)} />}
     {tab === "inv" && (() => {
       const today = new Date().toISOString().slice(0, 10);
       const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : null;
@@ -2026,6 +2032,157 @@ function MileForm({ editId, date: d, purpose: p, from: fr, to: t, miles: m, note
   const [f, setF] = useState({ date: d || td(), purpose: p || "", from: fr || "", to: t || "", miles: m || "", notes: n || "" });
   return <Modal title={`${editId ? "Edit" : "Log"} Trip`} onClose={onClose}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Date"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={inp} /></Field><Field label="Miles"><input type="number" step=".1" placeholder="0.0" value={f.miles} onChange={(e) => setF({ ...f, miles: e.target.value })} style={inp} /></Field><Field label="Purpose" span><input placeholder="Client meeting" value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} style={inp} /></Field><Field label="From"><input placeholder="Start" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} style={inp} /></Field><Field label="To"><input placeholder="Dest" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} style={inp} /></Field><Field label="Notes" span><textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ ...inp, resize: "vertical" }} /></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.miles) return; onSave({ id: editId || uid(), bizId, ...f, miles: parseFloat(f.miles) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div></Modal>;
 }
+
+// ─── SCHEDULE C PRINT ────────────────────────────────────────────────────────
+function ScheduleCPrint({ txns, miles, biz, year, totInc, totExp, net, mileDed, seTax, onClose }) {
+  const qEst = seTax / 4;
+  // Build per-category totals from txns
+  const expTotals = {};
+  txns.filter((t) => t.type === "expense").forEach((t) => {
+    const c = SCHEDULE_C.find((c) => c.code === t.category);
+    const k = c?.code || "L23";
+    expTotals[k] = (expTotals[k] || 0) + t.amount;
+  });
+  const incTotals = {};
+  txns.filter((t) => t.type === "income").forEach((t) => {
+    const c = INC_CATS.find((c) => c.code === t.category);
+    const k = c?.code || "I01";
+    incTotals[k] = (incTotals[k] || 0) + t.amount;
+  });
+  const grossReceipts = incTotals["I01"] || 0;
+  const returns = incTotals["I02"] || 0;
+  const otherInc = incTotals["I03"] || 0;
+  const totalMilesDed = miles.reduce((s, m) => s + m.miles * MILE_RATE, 0);
+  const totalMiles = miles.reduce((s, m) => s + m.miles, 0);
+
+  const cell = { padding: "5px 8px", borderBottom: "1px solid #d1d5db", fontSize: 12 };
+  const lbl = { ...cell, color: "#374151", width: "60%" };
+  const val = { ...cell, textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "#111827", width: "40%" };
+  const secHdr = { background: "#1e3a5f", color: "#fff", padding: "6px 10px", fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: "uppercase" };
+  const subHdr = { background: "#dbeafe", color: "#1e40af", padding: "4px 8px", fontSize: 10, fontWeight: 700, letterSpacing: .3, textTransform: "uppercase" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", zIndex: 400, overflowY: "auto", padding: "20px 16px 40px" }}>
+      {/* Action bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
+        <Btn v="ghost" onClick={onClose}><I name="x" size={14} /> Close</Btn>
+        <Btn onClick={() => window.print()} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print / Save PDF</Btn>
+      </div>
+
+      {/* Printable document */}
+      <div className="ocb-schedC-paper" style={{ background: "#fff", color: "#111827", width: "100%", maxWidth: 760, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,.5)", fontFamily: "'DM Sans',sans-serif", overflow: "hidden" }}>
+
+        {/* IRS header */}
+        <div style={{ background: "#1e3a5f", padding: "18px 24px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>Schedule C (Form 1040)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>Profit or Loss From Business</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", marginTop: 3 }}>Sole Proprietorship · Tax Year {year}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,.15)", letterSpacing: 3 }}>IRS</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 }}>Generated by OpenClaw Books</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 14, padding: "10px 0", borderTop: "1px solid rgba(255,255,255,.15)" }}>
+            {[["Business Name", biz?.name || "—"], ["EIN", biz?.ein || "N/A"], ["Tax Year", String(year)]].map(([l, v]) => (
+              <div key={l}>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: .8 }}>{l}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: "0 0 24px" }}>
+          {/* PART I — INCOME */}
+          <div style={secHdr}>Part I — Income</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr><td style={lbl}><strong>1.</strong> Gross receipts or sales</td><td style={val}>{$(grossReceipts)}</td></tr>
+              <tr><td style={lbl}><strong>2.</strong> Returns and allowances</td><td style={val}>{returns > 0 ? `(${$(returns)})` : "—"}</td></tr>
+              <tr><td style={lbl}><strong>3.</strong> Subtract line 2 from line 1</td><td style={val}>{$(grossReceipts - returns)}</td></tr>
+              <tr><td style={lbl}><strong>4.</strong> Cost of goods sold (Sch. C-EZ)</td><td style={val}>—</td></tr>
+              <tr><td style={lbl}><strong>5.</strong> Gross profit (line 3 minus line 4)</td><td style={val}>{$(grossReceipts - returns)}</td></tr>
+              {otherInc > 0 && <tr><td style={lbl}><strong>6.</strong> Other income</td><td style={val}>{$(otherInc)}</td></tr>}
+              <tr style={{ background: "#f0fdf4" }}>
+                <td style={{ ...lbl, fontWeight: 700, color: "#166534" }}><strong>7.</strong> Gross income (add lines 5 and 6)</td>
+                <td style={{ ...val, color: "#16a34a", fontSize: 14 }}>{$(totInc)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* PART II — EXPENSES */}
+          <div style={secHdr}>Part II — Expenses</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {SCHEDULE_C.map((cat) => {
+                const amt = expTotals[cat.code] || 0;
+                // Line 9 (car) — show mileage deduction instead if miles logged
+                if (cat.code === "L02" && totalMiles > 0) {
+                  return (
+                    <tr key={cat.code}>
+                      <td style={lbl}><strong>{cat.line}.</strong> {cat.label} <span style={{ fontSize: 10, color: "#6b7280" }}>({totalMiles.toFixed(1)} mi × ${MILE_RATE}/mi)</span></td>
+                      <td style={val}>{$(totalMilesDed + amt)}</td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={cat.code} style={{ background: amt > 0 ? undefined : "rgba(0,0,0,.015)" }}>
+                    <td style={{ ...lbl, color: amt > 0 ? "#111827" : "#9ca3af" }}><strong>{cat.line}.</strong> {cat.label}</td>
+                    <td style={{ ...val, color: amt > 0 ? "#111827" : "#d1d5db" }}>{amt > 0 ? $(amt) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Totals */}
+          <div style={subHdr}>Totals</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr><td style={lbl}><strong>28.</strong> Total expenses (before home office)</td><td style={val}>{$(totExp + totalMilesDed)}</td></tr>
+              <tr style={{ background: net >= 0 ? "#f0fdf4" : "#fff7ed" }}>
+                <td style={{ ...lbl, fontWeight: 700, color: net >= 0 ? "#166534" : "#9a3412" }}><strong>31.</strong> Net profit or (loss)</td>
+                <td style={{ ...val, color: net >= 0 ? "#16a34a" : "#ea580c", fontSize: 15 }}>{$(net)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* SE Tax Summary */}
+          <div style={secHdr}>Self-Employment Tax Estimate</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {[
+                ["Net profit (line 31)", $(net), "#111827"],
+                ["SE base (92.35% × net profit)", $(net * 0.9235), "#374151"],
+                ["SE tax rate", "15.3%", "#374151"],
+                ["Estimated SE tax", $(seTax), "#7c3aed"],
+                ["Quarterly estimated payment (÷ 4)", $(qEst), "#2563eb"],
+              ].map(([l, v, c]) => (
+                <tr key={l}>
+                  <td style={lbl}>{l}</td>
+                  <td style={{ ...val, color: c }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ padding: "10px 12px", background: "#eff6ff", borderTop: "1px solid #bfdbfe", fontSize: 11, color: "#1e40af" }}>
+            Quarterly due dates: <strong>Apr 15</strong> · <strong>Jun 15</strong> · <strong>Sep 15</strong> · <strong>Jan 15</strong> — Pay via IRS Direct Pay or EFTPS.
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: "12px 24px", borderTop: "2px solid #e5e7eb", marginTop: 4, display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9ca3af" }}>
+            <span>Generated by OpenClaw Books · {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+            <span>For informational purposes only — not a substitute for professional tax advice</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── INVOICE PREVIEW / PRINT ─────────────────────────────────────────────────
 function InvoicePreview({ invoice, biz, onClose, onMarkPaid, onSent }) {
   const [copied, setCopied] = useState(false);
