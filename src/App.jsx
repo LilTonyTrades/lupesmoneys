@@ -49,8 +49,8 @@ const INV_ST = ["Draft", "Sent", "Viewed", "Paid", "Overdue"];
 
 // ─── DB ──────────────────────────────────────────────────────────────────────
 const DB = "OpenClawBooks";
-const VER = 3;
-const STORES = ["businesses", "transactions", "mileage", "invoices", "contractors", "goals"];
+const VER = 4;
+const STORES = ["businesses", "transactions", "mileage", "invoices", "contractors", "goals", "rules"];
 function openDB() {
   return new Promise((ok, no) => {
     const r = indexedDB.open(DB, VER);
@@ -209,6 +209,7 @@ function App() {
   const [invs, setInvs] = useState([]);
   const [cons, setCons] = useState([]);
   const [goals, setGoals] = useState([]);
+  const [rules, setRules] = useState([]);
   const [view, setView] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -225,13 +226,14 @@ function App() {
   const recurringChecked = useRef(null); // tracks last bizId processed so we run once per session per biz
 
   const reload = useCallback(async () => {
-    const [b, t, m, i, c, g] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals")]);
+    const [b, t, m, i, c, g, rv] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals"), getAll("rules")]);
     setBusinesses(b.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     setTxns(t.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
     setMiles(m.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
     setInvs(i.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
     setCons(c.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     setGoals(g);
+    setRules(rv);
     if (!bizId && b.length > 0) setBizId(b[0].id);
     setLoading(false);
   }, [bizId]);
@@ -411,8 +413,8 @@ function App() {
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 80px" }}>
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
         : view === "dashboard" ? <Dash {...{ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc, setView }} />
-        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
-        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
+        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
+        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} onAdd={() => setModal({ t: "inv", d: {} })} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
@@ -427,6 +429,7 @@ function App() {
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
+      {modal?.t === "rules" && <RulesModal bizId={bizId} rules={rules} txns={bizOnly} onSave={async (r) => { await put("rules", r); reload(); }} onDelete={async (id) => { await del("rules", id); reload(); }} onApply={async (updated) => { await Promise.all(updated.map(t => put("transactions", t))); reload(); setSuccessToast({ msg: `${updated.length} transaction${updated.length !== 1 ? "s" : ""} auto-categorized`, items: [] }); }} onClose={close} />}
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz" && <BizForm {...modal.d} onSave={async (b) => { await put("businesses", b); if (!bizId) setBizId(b.id); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz-manage" && <BizManage businesses={businesses} currentId={bizId} onSwitch={(id) => { setBizId(id); close(); setView("dashboard"); }} onEdit={(b) => { close(); setTimeout(() => setModal({ t: "biz", d: { ...b, editId: b.id } }), 50); }} onDelete={async (id) => { await del("businesses", id); if (bizId === id) { const r = businesses.filter((b) => b.id !== id); setBizId(r[0]?.id || null); } reload(); close(); }} onClose={close} />}
@@ -815,22 +818,154 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
   );
 }
 
+// ─── CATEGORY PICKER ─────────────────────────────────────────────────────────
+function CategoryPicker({ cats, onSelect, onClose, anchorRect }) {
+  const [q, setQ] = useState("");
+  const inputRef = useRef();
+  const listRef = useRef();
+  const [hi, setHi] = useState(0);
+  const filtered = cats.filter((c) =>
+    (c.label + " " + (c.line || "")).toLowerCase().includes(q.toLowerCase())
+  );
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { setHi(0); }, [q]);
+  const top = anchorRect ? Math.min(anchorRect.bottom + 4, window.innerHeight - 280) : window.innerHeight / 2 - 130;
+  const left = anchorRect ? Math.max(4, Math.min(anchorRect.left, window.innerWidth - 264)) : window.innerWidth / 2 - 130;
+  const onKey = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, filtered.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (filtered[hi]) onSelect(filtered[hi]); }
+    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+  };
+  useEffect(() => { listRef.current?.children[hi]?.scrollIntoView({ block: "nearest" }); }, [hi]);
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1998 }} />
+      <div style={{ position: "fixed", top, left, width: 260, zIndex: 1999, background: "#1e1e2e", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, boxShadow: "0 12px 40px rgba(0,0,0,.7)", overflow: "hidden" }}>
+        <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
+            placeholder="Search category…"
+            style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 6, color: "#f1f5f9", fontSize: 12, padding: "5px 8px", outline: "none", fontFamily: "'DM Sans',sans-serif", boxSizing: "border-box" }} />
+        </div>
+        <div ref={listRef} style={{ maxHeight: 220, overflowY: "auto" }}>
+          {filtered.length === 0
+            ? <div style={{ padding: "10px 12px", fontSize: 12, color: "#475569" }}>No match</div>
+            : filtered.map((c, i) => {
+                const clr = CAT_COLORS[c.code] || "#94a3b8";
+                return (
+                  <div key={c.code} onClick={() => onSelect(c)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", background: i === hi ? "rgba(99,102,241,.18)" : "transparent", fontSize: 12, color: i === hi ? "#f1f5f9" : "#d1d5db" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: clr, flexShrink: 0 }} />
+                    {c.line && <span style={{ fontSize: 10, color: "#475569", fontFamily: "'JetBrains Mono',monospace", minWidth: 22 }}>Ln {c.line}</span>}
+                    <span style={{ flex: 1 }}>{c.label}</span>
+                  </div>
+                );
+              })
+          }
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── RULES MODAL ──────────────────────────────────────────────────────────────
+function RulesModal({ bizId, rules, txns, onSave, onDelete, onApply, onClose }) {
+  const bizRules = rules.filter((r) => r.bizId === bizId);
+  const [pattern, setPattern] = useState("");
+  const [category, setCategory] = useState(SCHEDULE_C[0].code);
+  const [applying, setApplying] = useState(false);
+  const addRule = async () => {
+    if (!pattern.trim()) return;
+    await onSave({ id: uid(), bizId, pattern: pattern.trim(), category });
+    setPattern("");
+  };
+  const applyAll = async () => {
+    setApplying(true);
+    const uncatExp = txns.filter((t) => t.type === "expense" && !SCHEDULE_C.find((c) => c.code === t.category));
+    const updated = [];
+    for (const t of uncatExp) {
+      const haystack = ((t.vendor || "") + " " + (t.description || "")).toLowerCase();
+      const match = bizRules.find((r) => haystack.includes(r.pattern.toLowerCase()));
+      if (match) updated.push({ ...t, category: match.category });
+    }
+    if (updated.length) await onApply(updated);
+    else alert("No uncategorized expenses matched any rules.");
+    setApplying(false);
+  };
+  return (
+    <Modal title="Auto-Categorization Rules" onClose={onClose} w={560}>
+      <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16, lineHeight: 1.6 }}>
+        Rules auto-assign a Schedule C category when a vendor or description <strong>contains</strong> the pattern.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 20, alignItems: "flex-end" }}>
+        <Field label="Vendor / Description Contains">
+          <input value={pattern} onChange={(e) => setPattern(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addRule()}
+            placeholder={'"Shell" or "AWS"'} style={inp} />
+        </Field>
+        <Field label="Assign Category">
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: CAT_COLORS[category] || "#94a3b8", flexShrink: 0 }} />
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inp, flex: 1 }}>
+              {SCHEDULE_C.map((c) => <option key={c.code} value={c.code}>Ln {c.line}: {c.label}</option>)}
+            </select>
+          </div>
+        </Field>
+        <Btn onClick={addRule} style={{ marginBottom: 1 }}><I name="plus" size={14} /> Add</Btn>
+      </div>
+      {bizRules.length === 0
+        ? <div style={{ textAlign: "center", padding: "20px 0", color: "#475569", fontSize: 13 }}>No rules yet. Add one above.</div>
+        : <div style={{ border: "1px solid rgba(255,255,255,.07)", borderRadius: 8, overflow: "hidden", marginBottom: 20 }}>
+            {bizRules.map((r, i) => {
+              const cat = SCHEDULE_C.find((c) => c.code === r.category);
+              const clr = CAT_COLORS[r.category] || "#94a3b8";
+              return (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: i < bizRules.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+                  <span style={{ flex: 1, color: "#f1f5f9", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>"{r.pattern}"</span>
+                  <span style={{ color: "#64748b", fontSize: 11 }}>→</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: clr }} />
+                    <span style={{ color: clr, fontSize: 12 }}>Ln {cat?.line}: {cat?.label || r.category}</span>
+                  </span>
+                  <button onClick={() => onDelete(r.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 2 }}><I name="trash" size={13} /></button>
+                </div>
+              );
+            })}
+          </div>
+      }
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <Btn v="ghost" onClick={onClose}>Close</Btn>
+        <Btn v="green" onClick={applyAll} disabled={applying || bizRules.length === 0}>
+          {applying ? "Applying…" : "Apply to All Uncategorized"}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── TXN LIST ────────────────────────────────────────────────────────────────
-function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit, onDelete, bc }) {
+function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit, onDelete, onQuickSave, onOpenRules, rules, bc }) {
   const [scope, setScope] = useState("all");
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [pickerState, setPickerState] = useState(null); // { txn, rect }
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
   let f = txns.filter((t) => t.type === type);
   if (scope === "business") f = f.filter((t) => t.scope !== "personal");
   if (scope === "personal") f = f.filter((t) => t.scope === "personal");
   if (searchQ) { const q = searchQ.toLowerCase(); f = f.filter((t) => (t.description || "").toLowerCase().includes(q) || (t.vendor || "").toLowerCase().includes(q)); }
   const total = sumAmt(f, (t) => t.amount);
+  const uncatCount = type === "expense" ? f.filter((t) => !t.category).length : 0;
   return <><div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>{type === "income" ? "Income" : "Expenses"}</h3><span style={{ fontSize: 13, color: "#94a3b8" }}>{f.length} · {$(total)}</span></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>{type === "income" ? "Income" : "Expenses"}</h3>
+        <span style={{ fontSize: 13, color: "#94a3b8" }}>{f.length} · {$(total)}</span>
+        {uncatCount > 0 && <span style={{ fontSize: 11, background: "rgba(245,158,11,.15)", color: "#f59e0b", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>⚠ {uncatCount} uncategorized</span>}
+      </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...inp, width: 110, fontSize: 12, background: "#111827" }}><option value="all">All</option><option value="business">Business</option><option value="personal">Personal</option></select>
+        {type === "expense" && <Btn v="ghost" onClick={onOpenRules} title="Manage auto-categorization rules"><I name="tag" size={15} /> Rules</Btn>}
         {type === "expense" && (
           FEATURES.BATCH_SCAN
             ? <Btn onClick={onBatchScan} v="ghost" title="Scan multiple receipts at once"><I name="layers" size={15} /> Batch Scan</Btn>
@@ -840,13 +975,14 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit,
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
-    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Description", "Category", "Scope", "Amount", "📎", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i >= 5 ? "center" : "left", padding: "9px 12px", fontSize: i === 5 ? 14 : 10, fontWeight: 600, color: "#64748b", textTransform: i === 5 ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 36 : i === 6 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{t.description || "—"}{t.recurring?.freq && <span title={`Repeats ${t.recurring.freq}`} style={{ fontSize: 10, background: "rgba(99,102,241,.2)", color: "#a5b4fc", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>🔁 {t.recurring.freq}</span>}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <Badge color={type === "expense" ? (CAT_COLORS[t.category] || bc) : "#22c55e"}>Ln {cat.line}: {cat.label}</Badge> : "—"}</td><td style={{ padding: "10px 12px" }}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "−"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>📎</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => setConfirmDeleteId(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
+    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Description", "Category", "Scope", "Amount", "\uD83D\uDCCE", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i >= 5 ? "center" : "left", padding: "9px 12px", fontSize: i === 5 ? 14 : 10, fontWeight: 600, color: "#64748b", textTransform: i === 5 ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 36 : i === 6 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); const isUncat = type === "expense" && !t.category; return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isUncat ? "3px solid #f59e0b" : "3px solid transparent", background: isUncat ? "rgba(245,158,11,.04)" : undefined }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{t.description || "—"}{t.recurring?.freq && <span title={`Repeats ${t.recurring.freq}`} style={{ fontSize: 10, background: "rgba(99,102,241,.2)", color: "#a5b4fc", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>{"\uD83D\uDD01"} {t.recurring.freq}</span>}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <span title="Click to change category" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color={type === "expense" ? (CAT_COLORS[t.category] || bc) : "#22c55e"}>Ln {cat.line}: {cat.label}</Badge></span> : <span title="Click to categorize" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color="#f59e0b">+ Categorize</Badge></span>}</td><td style={{ padding: "10px 12px" }}><span title="Click to toggle business/personal" style={{ cursor: "pointer" }} onClick={() => onQuickSave({ ...t, scope: t.scope === "personal" ? "business" : "personal" })}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></span></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "\u2212"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>{"\uD83D\uDCCE"}</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => setConfirmDeleteId(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
   </div>
+  {pickerState && <CategoryPicker cats={cats} anchorRect={pickerState.rect} onSelect={(code) => { onQuickSave({ ...pickerState.txn, category: code }); setPickerState(null); }} onClose={() => setPickerState(null)} />}
   {viewingReceipt && <ReceiptViewer receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} />}
   {confirmDeleteId && (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
       <div style={{ background: "#1e1e2e", border: "1px solid rgba(255,255,255,.1)", borderRadius: 14, padding: "28px 32px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,.6)" }}>
-        <div style={{ fontSize: 22, marginBottom: 12, textAlign: "center" }}>🗑️</div>
+        <div style={{ fontSize: 22, marginBottom: 12, textAlign: "center" }}>{"\uD83D\uDDD1\uFE0F"}</div>
         <p style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15, textAlign: "center", marginBottom: 6 }}>
           Are you sure you want to remove this {type === "income" ? "income entry" : "expense"}?
         </p>
