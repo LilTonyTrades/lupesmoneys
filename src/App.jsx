@@ -130,7 +130,7 @@ function dlFile(c, n, m) {
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 function I({ name, size = 18, color }) {
-  const p = { home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", dollar: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", receipt: "M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z", car: "M16 3h-2l-2 4H6L4 3H2M5 14h14l1-5H4zM7 17a1 1 0 100 2 1 1 0 000-2zM17 17a1 1 0 100 2 1 1 0 000-2z", file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", target: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z", chart: "M18 20V10M12 20V4M6 20v-6", download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", plus: "M12 5v14M5 12h14", x: "M18 6 6 18M6 6l12 12", check: "M20 6 9 17l-5-5", trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14", edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",send: "M22 2L11 13M22 2l-7 20-4-9-9-4z", calendar: "M19 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zM16 2v4M8 2v4M3 10h18", search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z", tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01", pie: "M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z", building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01", chevDown: "M6 9l6 6 6-6", settings: "M12 15a3 3 0 100-6 3 3 0 000 6z", laptop: "M20 16V7a2 2 0 00-2-2H6a2 2 0 00-2 2v9m16 0H4m16 0l1.28 2.55a1 1 0 01-.9 1.45H3.62a1 1 0 01-.9-1.45L4 16", video: "M23 7l-7 5 7 5V7zM14 5H3a2 2 0 00-2 2v10a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2z", shopping: "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0", tool: "M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z", briefcase: "M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2zM16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16", zap: "M13 2L3 14h9l-1 10 10-12h-9l1-10", "arrow-right": "M5 12h14M12 5l7 7-7 7", "arrow-left": "M19 12H5M12 19l-7-7 7-7", layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", lock: "M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4" };
+  const p = { home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", dollar: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", receipt: "M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z", car: "M16 3h-2l-2 4H6L4 3H2M5 14h14l1-5H4zM7 17a1 1 0 100 2 1 1 0 000-2zM17 17a1 1 0 100 2 1 1 0 000-2z", file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", target: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 18a6 6 0 100-12 6 6 0 000 12zM12 14a2 2 0 100-4 2 2 0 000 4z", chart: "M18 20V10M12 20V4M6 20v-6", download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", plus: "M12 5v14M5 12h14", x: "M18 6 6 18M6 6l12 12", check: "M20 6 9 17l-5-5", trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14", edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",send: "M22 2L11 13M22 2l-7 20-4-9-9-4z", calendar: "M19 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zM16 2v4M8 2v4M3 10h18", search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z", tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01", pie: "M21.21 15.89A10 10 0 118 2.83M22 12A10 10 0 0012 2v10z", building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01", chevDown: "M6 9l6 6 6-6", settings: "M12 15a3 3 0 100-6 3 3 0 000 6z", laptop: "M20 16V7a2 2 0 00-2-2H6a2 2 0 00-2 2v9m16 0H4m16 0l1.28 2.55a1 1 0 01-.9 1.45H3.62a1 1 0 01-.9-1.45L4 16", video: "M23 7l-7 5 7 5V7zM14 5H3a2 2 0 00-2 2v10a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2z", shopping: "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0", tool: "M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z", briefcase: "M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2zM16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16", zap: "M13 2L3 14h9l-1 10 10-12h-9l1-10", "arrow-right": "M5 12h14M12 5l7 7-7 7", "arrow-left": "M19 12H5M12 19l-7-7 7-7", layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", lock: "M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4", eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z", printer: "M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z", mail: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6", copy: "M20 9H11a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-9a2 2 0 00-2-2zM5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color || "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p[name] || p.file} /></svg>;
 }
 
@@ -360,7 +360,7 @@ function App() {
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0f0f1a,#1a1a2e 50%,#16213e)", color: "#e2e8f0", minHeight: "100vh", fontSize: 14 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}@media print{body *{visibility:hidden!important}.ocb-invoice-paper,.ocb-invoice-paper *{visibility:visible!important}.ocb-invoice-paper{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;background:#fff!important;z-index:99999!important;overflow:visible!important;box-shadow:none!important;border:none!important;border-radius:0!important}}`}</style>
 
       {/* HEADER */}
       <header style={{ background: "rgba(15,15,26,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "10px 20px", position: "sticky", top: 0, zIndex: 100 }}>
@@ -422,7 +422,7 @@ function App() {
         : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
         : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
-        : view === "invoices" ? <InvV invoices={yInvs} onAdd={() => setModal({ t: "inv", d: {} })} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} reload={reload} bc={bc} />
+        : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const nextNum = `INV-${year}-${String(bInvs.length + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
         : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
@@ -434,6 +434,7 @@ function App() {
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
+      {modal?.t === "inv-preview" && <InvoicePreview invoice={modal.d.invoice} biz={modal.d.biz} onClose={close} onMarkPaid={async () => { await put("invoices", { ...modal.d.invoice, status: "Paid", paidDate: td() }); reload(); close(); }} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
       {modal?.t === "rules" && <RulesModal bizId={bizId} rules={rules} txns={bizOnly} onSave={async (r) => { await put("rules", r); reload(); }} onDelete={async (id) => { await del("rules", id); reload(); }} onApply={async (updated) => { await Promise.all(updated.map(t => put("transactions", t))); reload(); setSuccessToast({ msg: `${updated.length} transaction${updated.length !== 1 ? "s" : ""} auto-categorized`, items: [] }); }} onClose={close} />}
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
@@ -1193,12 +1194,48 @@ function MileV({ trips, rate, onAdd, onEdit, onDelete }) {
 }
 
 // ─── INVOICES ─────────────────────────────────────────────────────────────────
-function InvV({ invoices, onAdd, onEdit, onDelete, reload, bc }) {
+function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc }) {
   const sc = { Draft: "#94a3b8", Sent: "#3b82f6", Viewed: "#8b5cf6", Paid: "#22c55e", Overdue: "#ef4444" };
+  const today = td();
+  // Auto-flag overdue: Sent/Viewed past due date
+  const withStatus = invoices.map((i) => {
+    if (i.status !== "Paid" && i.status !== "Draft" && i.dueDate && i.dueDate < today) return { ...i, status: "Overdue" };
+    return i;
+  });
+  const outstanding = withStatus.filter((i) => i.status !== "Paid").reduce((s, i) => s + i.amount, 0);
+  const collected   = withStatus.filter((i) => i.status === "Paid").reduce((s, i) => s + i.amount, 0);
+  const overdueCount = withStatus.filter((i) => i.status === "Overdue").length;
   return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Invoices</h3><Btn onClick={onAdd}><I name="plus" size={15} /> New</Btn></div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}><Stat label="Outstanding" value={$(invoices.filter((i) => i.status !== "Paid").reduce((s, i) => s + i.amount, 0))} color="#f59e0b" icon="send" /><Stat label="Collected" value={$(invoices.filter((i) => i.status === "Paid").reduce((s, i) => s + i.amount, 0))} color="#22c55e" icon="check" /><Stat label="Total" value={invoices.length} color={bc} icon="file" /></div>
-    {invoices.length === 0 ? <Empty icon="send" text="No invoices." /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Client", "Desc", "Status", "Amount", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i === 5 ? "center" : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 100 : undefined }}>{h}</th>)}</tr></thead><tbody>{invoices.map((i) => <tr key={i.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{i.date}</td><td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500 }}>{i.clientName || "—"}</td><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{i.description || "—"}</td><td style={{ padding: "10px 12px" }}><Badge color={sc[i.status]}>{i.status}</Badge></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: "#22c55e" }}>{$(i.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{i.status !== "Paid" && <button onClick={async () => { await put("invoices", { ...i, status: "Paid", paidDate: td() }); reload(); }} style={{ background: "transparent", border: "none", color: "#22c55e", cursor: "pointer", padding: 3 }}><I name="check" size={14} /></button>}<button onClick={() => onEdit(i)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(i.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>)}</tbody></table></Card>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Invoices</h3>
+        {overdueCount > 0 && <span style={{ fontSize: 11, background: "rgba(239,68,68,.15)", color: "#ef4444", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>⚠ {overdueCount} overdue</span>}
+      </div>
+      <Btn onClick={onAdd}><I name="plus" size={15} /> New Invoice</Btn>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}>
+      <Stat label="Outstanding" value={$(outstanding)} color="#f59e0b" icon="send" />
+      <Stat label="Collected" value={$(collected)} color="#22c55e" icon="check" />
+      <Stat label="Total Invoices" value={invoices.length} color={bc} icon="file" />
+      <Stat label="Avg Invoice" value={invoices.length ? $(invoices.reduce((s,i)=>s+i.amount,0)/invoices.length) : "$0"} color="#8b5cf6" icon="dollar" />
+    </div>
+    {invoices.length === 0 ? <Empty icon="send" text="No invoices yet. Create your first one!" /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["#", "Date", "Client", "Description", "Status", "Amount", ""].map((h, i) => <th key={i} style={{ textAlign: i === 5 ? "right" : i === 6 ? "center" : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 0 ? 100 : i === 6 ? 120 : undefined }}>{h}</th>)}</tr></thead><tbody>{withStatus.map((i) => {
+      const isOverdue = i.status === "Overdue";
+      return <tr key={i.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isOverdue ? "3px solid #ef4444" : "3px solid transparent", background: isOverdue ? "rgba(239,68,68,.03)" : undefined }}>
+        <td style={{ padding: "10px 12px", fontSize: 12, color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>{i.invoiceNumber || "—"}</td>
+        <td style={{ padding: "10px 12px", fontSize: 13 }}>{i.date}</td>
+        <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500, color: "#f1f5f9" }}>{i.clientName || "—"}</td>
+        <td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.description || "—"}</td>
+        <td style={{ padding: "10px 12px" }}><Badge color={sc[i.status] || "#94a3b8"}>{i.status}</Badge>{i.dueDate && i.status !== "Paid" && <div style={{ fontSize: 10, color: isOverdue ? "#ef4444" : "#64748b", marginTop: 2 }}>Due {i.dueDate}</div>}</td>
+        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: i.status === "Paid" ? "#22c55e" : isOverdue ? "#ef4444" : "#f59e0b" }}>{$(i.amount)}</td>
+        <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
+          <button title="Preview & Print" onClick={() => onPreview(i)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", padding: 3 }}><I name="eye" size={14} /></button>
+          {i.status !== "Paid" && <button title="Mark Paid" onClick={async () => { await put("invoices", { ...i, status: "Paid", paidDate: td() }); reload(); }} style={{ background: "transparent", border: "none", color: "#22c55e", cursor: "pointer", padding: 3 }}><I name="check" size={14} /></button>}
+          <button title="Edit" onClick={() => onEdit(i)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button>
+          <button title="Delete" onClick={() => onDelete(i.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button>
+        </td>
+      </tr>;
+    })}</tbody></table></Card>}
   </div>;
 }
 
@@ -1828,9 +1865,151 @@ function MileForm({ editId, date: d, purpose: p, from: fr, to: t, miles: m, note
   const [f, setF] = useState({ date: d || td(), purpose: p || "", from: fr || "", to: t || "", miles: m || "", notes: n || "" });
   return <Modal title={`${editId ? "Edit" : "Log"} Trip`} onClose={onClose}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Date"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={inp} /></Field><Field label="Miles"><input type="number" step=".1" placeholder="0.0" value={f.miles} onChange={(e) => setF({ ...f, miles: e.target.value })} style={inp} /></Field><Field label="Purpose" span><input placeholder="Client meeting" value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} style={inp} /></Field><Field label="From"><input placeholder="Start" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} style={inp} /></Field><Field label="To"><input placeholder="Dest" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} style={inp} /></Field><Field label="Notes" span><textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ ...inp, resize: "vertical" }} /></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.miles) return; onSave({ id: editId || uid(), bizId, ...f, miles: parseFloat(f.miles) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div></Modal>;
 }
-function InvForm({ editId, date: d, clientName: cn, clientEmail: ce, description: desc, amount: a, status: st, dueDate: dd, bizId, onSave, onClose }) {
-  const [f, setF] = useState({ date: d || td(), clientName: cn || "", clientEmail: ce || "", description: desc || "", amount: a || "", status: st || "Draft", dueDate: dd || "" });
-  return <Modal title={`${editId ? "Edit" : "New"} Invoice`} onClose={onClose}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Date"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={inp} /></Field><Field label="Due"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} style={inp} /></Field><Field label="Client"><input placeholder="Name" value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} style={inp} /></Field><Field label="Email"><input placeholder="email" value={f.clientEmail} onChange={(e) => setF({ ...f, clientEmail: e.target.value })} style={inp} /></Field><Field label="Description" span><input placeholder="Services" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} style={inp} /></Field><Field label="Amount ($)"><input type="number" step=".01" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} style={inp} /></Field><Field label="Status"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} style={inp}>{INV_ST.map((s) => <option key={s}>{s}</option>)}</select></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.amount) return; onSave({ id: editId || uid(), bizId, ...f, amount: parseFloat(f.amount) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Create"}</Btn></div></Modal>;
+// ─── INVOICE PREVIEW / PRINT ─────────────────────────────────────────────────
+function InvoicePreview({ invoice, biz, onClose, onMarkPaid }) {
+  const [copied, setCopied] = useState(false);
+  const bc = biz?.color || "#3b82f6";
+  const inv = invoice;
+  const sc = { Draft: "#94a3b8", Sent: "#3b82f6", Viewed: "#8b5cf6", Paid: "#22c55e", Overdue: "#ef4444" };
+  const statusColor = sc[inv.status] || "#94a3b8";
+
+  const emailDraft = `Subject: Invoice ${inv.invoiceNumber || ""} from ${biz?.name || ""}
+
+Hi ${inv.clientName || ""},
+
+Please find your invoice details below:
+
+Invoice #: ${inv.invoiceNumber || "N/A"}
+Date:      ${inv.date}
+Due Date:  ${inv.dueDate || "Upon receipt"}
+Amount:    ${$(inv.amount)}
+
+Services: ${inv.description || ""}
+${inv.notes ? `\nNotes: ${inv.notes}` : ""}
+
+Please send payment by the due date. Thank you for your business!
+
+${biz?.name || ""}${biz?.ein ? `\nEIN: ${biz.ein}` : ""}`;
+
+  const copyEmail = () => {
+    navigator.clipboard.writeText(emailDraft).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", zIndex: 400, overflowY: "auto", padding: "20px 16px 40px" }}>
+      {/* Action bar — not printed */}
+      <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
+        <Btn v="ghost" onClick={onClose}><I name="x" size={14} /> Close</Btn>
+        <Btn v="ghost" onClick={copyEmail}><I name={copied ? "check" : "copy"} size={14} /> {copied ? "Copied!" : "Copy Email Draft"}</Btn>
+        {inv.status !== "Paid" && <Btn v="green" onClick={onMarkPaid}><I name="check" size={14} /> Mark Paid</Btn>}
+        <Btn onClick={() => window.print()} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print / Save PDF</Btn>
+      </div>
+
+      {/* The printable invoice paper */}
+      <div className="ocb-invoice-paper" style={{ background: "#ffffff", color: "#1a1a2e", width: "100%", maxWidth: 720, borderRadius: 12, boxShadow: "0 24px 60px rgba(0,0,0,.5)", fontFamily: "'DM Sans',sans-serif", overflow: "hidden" }}>
+
+        {/* Brand header */}
+        <div style={{ background: bc, padding: "28px 36px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", letterSpacing: -.5 }}>{biz?.name || "Your Business"}</div>
+            {biz?.ein && <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)", marginTop: 4 }}>EIN: {biz.ein}</div>}
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 32, fontWeight: 900, color: "rgba(255,255,255,.25)", letterSpacing: 4, lineHeight: 1 }}>INVOICE</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#ffffff", marginTop: 4, fontFamily: "'JetBrains Mono',monospace" }}>{inv.invoiceNumber || "—"}</div>
+          </div>
+        </div>
+
+        {/* Bill-to + details row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, padding: "28px 36px", borderBottom: "1px solid #e2e8f0" }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>Bill To</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{inv.clientName || "—"}</div>
+            {inv.clientEmail && <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>{inv.clientEmail}</div>}
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>Details</div>
+            {[["Issue Date", inv.date], ["Due Date", inv.dueDate || "Upon receipt"], ["Status", inv.status]].map(([l, v], i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "flex-end", gap: 16, marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>{l}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: i === 2 ? statusColor : "#0f172a", minWidth: 100, textAlign: "right" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Line items */}
+        <div style={{ padding: "28px 36px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+                <th style={{ textAlign: "left", padding: "8px 0", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5 }}>Description</th>
+                <th style={{ textAlign: "right", padding: "8px 0", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5 }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: "16px 0", fontSize: 14, color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>{inv.description || "Services rendered"}</td>
+                <td style={{ padding: "16px 0", textAlign: "right", fontSize: 14, fontFamily: "'JetBrains Mono',monospace", color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>{$(inv.amount)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Totals */}
+          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <div style={{ display: "flex", gap: 40, fontSize: 12, color: "#64748b" }}>
+              <span>Subtotal</span><span style={{ fontFamily: "'JetBrains Mono',monospace", minWidth: 80, textAlign: "right" }}>{$(inv.amount)}</span>
+            </div>
+            <div style={{ display: "flex", gap: 40, fontSize: 12, color: "#64748b" }}>
+              <span>Tax</span><span style={{ fontFamily: "'JetBrains Mono',monospace", minWidth: 80, textAlign: "right" }}>$0.00</span>
+            </div>
+            <div style={{ display: "flex", gap: 40, fontSize: 18, fontWeight: 800, color: "#0f172a", paddingTop: 8, borderTop: `2px solid ${bc}` }}>
+              <span>Total Due</span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: bc, minWidth: 80, textAlign: "right" }}>{$(inv.amount)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {inv.notes && (
+          <div style={{ padding: "0 36px 28px" }}>
+            <div style={{ padding: 16, background: "#f8fafc", borderRadius: 8, borderLeft: `4px solid ${bc}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Notes</div>
+              <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{inv.notes}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ background: "#f8fafc", padding: "16px 36px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #e2e8f0" }}>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>Generated by OpenClaw Books</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: bc }}>Thank you for your business!</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvForm({ editId, invoiceNumber: invNum, date: d, clientName: cn, clientEmail: ce, description: desc, amount: a, status: st, dueDate: dd, notes: nt, bizId, onSave, onClose }) {
+  const [f, setF] = useState({ invoiceNumber: invNum || "", date: d || td(), clientName: cn || "", clientEmail: ce || "", description: desc || "", amount: a || "", status: st || "Draft", dueDate: dd || "", notes: nt || "" });
+  return <Modal title={`${editId ? "Edit" : "New"} Invoice`} onClose={onClose} w={560}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <Field label="Invoice #"><input placeholder="INV-2026-001" value={f.invoiceNumber} onChange={(e) => setF({ ...f, invoiceNumber: e.target.value })} style={{ ...inp, fontFamily: "'JetBrains Mono',monospace" }} /></Field>
+      <Field label="Status"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} style={inp}>{INV_ST.map((s) => <option key={s}>{s}</option>)}</select></Field>
+      <Field label="Issue Date"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={inp} /></Field>
+      <Field label="Due Date"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} style={inp} /></Field>
+      <Field label="Client Name"><input placeholder="Client or Company name" value={f.clientName} onChange={(e) => setF({ ...f, clientName: e.target.value })} style={inp} /></Field>
+      <Field label="Client Email"><input type="email" placeholder="client@example.com" value={f.clientEmail} onChange={(e) => setF({ ...f, clientEmail: e.target.value })} style={inp} /></Field>
+      <Field label="Description of Services" span><input placeholder="e.g. Web design — May 2026" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} style={inp} /></Field>
+      <Field label="Amount ($)"><input type="number" step=".01" min="0" placeholder="0.00" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} style={inp} /></Field>
+      <Field label="Notes (printed on invoice)" span><textarea rows={2} placeholder="Payment terms, bank details, thank-you note…" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ ...inp, resize: "vertical" }} /></Field>
+    </div>
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+      <Btn v="ghost" onClick={onClose}>Cancel</Btn>
+      <Btn v="green" onClick={() => { if (!f.amount || !f.clientName) return; onSave({ id: editId || uid(), bizId, ...f, amount: parseFloat(f.amount) || 0 }); }}>
+        <I name="check" size={15} /> {editId ? "Update" : "Create Invoice"}
+      </Btn>
+    </div>
+  </Modal>;
 }
 function ConForm({ editId, name: n, ein: e, email: em, phone: ph, address: ad, bizId, onSave, onClose }) {
   const [f, setF] = useState({ name: n || "", ein: e || "", email: em || "", phone: ph || "", address: ad || "" });
