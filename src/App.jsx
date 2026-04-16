@@ -310,7 +310,11 @@ function App() {
     window.electronAPI.onUpdateNotAvailable(() => setCheckStatus("up-to-date"));
     window.electronAPI.onUpdateDownloaded((info) => setUpdateInfo((u) => ({ ...u, version: info.version, downloaded: true })));
     window.electronAPI.onUpdateProgress((p) => setUpdateInfo((u) => u ? { ...u, percent: Math.round(p.percent) } : u));
-    window.electronAPI.onUpdateError(() => setCheckStatus((s) => s === "checking" ? "error" : s));
+    window.electronAPI.onUpdateError((msg) => {
+      setCheckStatus((s) => s === "checking" ? "error" : s);
+      setInstalling(false);
+      setGlobalError(msg || "Update failed — please download the latest version from GitHub.");
+    });
     return () => window.electronAPI.removeUpdateListeners();
   }, []);
 

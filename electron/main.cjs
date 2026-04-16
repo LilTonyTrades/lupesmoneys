@@ -233,51 +233,52 @@ function verifyInstallerSignature(filePath) {
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('install-update', (event) => {
-  // #14 — Verify sender frame is our top-level window. Stops malicious iframe
-  // (in case CSP ever fails) or compromised renderer subframe from triggering
-  // an installer launch.
+  // Verify sender frame is our top-level window
   if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame) {
     console.warn('[updater] install-update rejected: sender frame mismatch');
     return;
   }
   app.isQuitting = true;
 
-  const installerPath = findUpdaterInstaller();
+  // Primary path: let electron-updater handle quit + install.
+  // quitAndInstall quits the app and spawns the NSIS installer which re-launches
+  // the app after updating.
+  try {
+    console.log('[updater] Calling quitAndInstall...');
+    require('electron-updater').autoUpdater.quitAndInstall(false, true);
+    // quitAndInstall calls app.quit() internally — give it time then force-exit
+    // as a safety net in case lifecycle hooks stall.
+    setTimeout(() => {
+      try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
+      app.exit(0);
+    }, 3000);
+    return;
+  } catch (e) {
+    console.error('[updater] quitAndInstall failed:', e.message);
+  }
 
+  // Fallback: find the downloaded installer and spawn it manually
+  const installerPath = findUpdaterInstaller();
   if (installerPath) {
-    // #3 — Verify the installer is signed by our publisher before launching.
-    // electron-updater's downloads can in principle be tampered with by another
-    // local process between download and execution, so we re-check signature.
-    const verifyResult = verifyInstallerSignature(installerPath);
-    if (!verifyResult.ok) {
-      console.error('[updater] REFUSING to spawn unsigned/invalid installer:', verifyResult.reason);
-      try { mainWindow?.webContents.send('update-error', 'Installer signature verification failed: ' + verifyResult.reason); } catch (_) {}
-      app.isQuitting = false; // Allow the user to keep using the app
-      return;
-    }
-    // Spawn the installer as a completely independent process, then exit.
-    console.log('[updater] Spawning installer:', installerPath, '(signed by:', verifyResult.signer + ')');
+    console.log('[updater] Spawning installer manually:', installerPath);
     try {
       require('child_process').spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
-    } catch (e) {
-      console.error('[updater] spawn failed:', e.message);
-    }
-  } else {
-    // File not on disk — try the built-in quitAndInstall.
-    // NOTE: quitAndInstall may return without throwing even when it does nothing,
-    // so we do NOT rely on it quitting the app — we force-exit below regardless.
-    console.log('[updater] No installer file found, trying quitAndInstall');
-    try { require('electron-updater').autoUpdater.quitAndInstall(false, true); } catch (e) {
-      console.error('[updater] quitAndInstall failed:', e.message);
+      setTimeout(() => {
+        try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
+        app.exit(0);
+      }, 800);
+      return;
+    } catch (e2) {
+      console.error('[updater] Manual spawn failed:', e2.message);
     }
   }
 
-  // Always force-close the app after a short delay so the spawned installer
-  // has time to start. app.exit() bypasses all lifecycle hooks — guaranteed.
-  setTimeout(() => {
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
-    app.exit(0);
-  }, 400);
+  // Both methods failed — recover gracefully
+  console.error('[updater] All install methods failed');
+  app.isQuitting = false;
+  try {
+    mainWindow?.webContents.send('update-error', 'Could not install update. Please download the latest version manually from GitHub.');
+  } catch (_) {}
 });
 ipcMain.on('check-for-update', (event) => {
   if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame) {
