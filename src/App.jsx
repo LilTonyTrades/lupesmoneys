@@ -424,7 +424,7 @@ function App() {
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
-        : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} />
+        : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
@@ -905,15 +905,37 @@ function Dash({ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMile
             </div>
           </Card>
           <Card>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 10 }}>Unpaid Invoices</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              AR Aging
+              {unpaid.filter((i) => i.dueDate && i.dueDate < today).length > 0 && <span style={{ fontSize: 11, background: "rgba(239,68,68,.15)", color: "#ef4444", borderRadius: 5, padding: "2px 6px", fontWeight: 600 }}>⚠ {unpaid.filter((i) => i.dueDate && i.dueDate < today).length} overdue</span>}
+            </div>
             {unpaid.length === 0
-              ? <p style={{ color: "#64748b", fontSize: 13 }}>All caught up!</p>
-              : unpaid.slice(0, 4).map((i) => (
-                  <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)", fontSize: 13 }}>
-                    <span style={{ color: "#d1d5db" }}>{i.clientName || "Client"}</span>
-                    <span style={{ color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(i.amount)}</span>
-                  </div>
-                ))
+              ? <p style={{ color: "#64748b", fontSize: 13 }}>✓ All invoices paid!</p>
+              : (() => {
+                  const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : -1;
+                  const buckets = [
+                    { label: "Current", color: "#22c55e", items: unpaid.filter((i) => age(i) <= 0) },
+                    { label: "1–30 days", color: "#f59e0b", items: unpaid.filter((i) => age(i) >= 1 && age(i) <= 30) },
+                    { label: "31–60 days", color: "#f97316", items: unpaid.filter((i) => age(i) >= 31 && age(i) <= 60) },
+                    { label: "61–90 days", color: "#ef4444", items: unpaid.filter((i) => age(i) >= 61 && age(i) <= 90) },
+                    { label: "90+ days", color: "#dc2626", items: unpaid.filter((i) => age(i) > 90) },
+                  ];
+                  const total = unpaid.reduce((s, i) => s + i.amount, 0);
+                  return <>
+                    {buckets.map(({ label, color, items }) => items.length === 0 ? null : (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                        <span style={{ flex: 1, fontSize: 12, color: "#94a3b8" }}>{label}</span>
+                        <span style={{ fontSize: 11, color: "#475569", marginRight: 4 }}>{items.length} inv</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color, fontFamily: "'JetBrains Mono',monospace" }}>{$(items.reduce((s, i) => s + i.amount, 0))}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", fontWeight: 700, fontSize: 13 }}>
+                      <span style={{ color: "#f1f5f9" }}>Total Outstanding</span>
+                      <span style={{ color: "#f59e0b", fontFamily: "'JetBrains Mono',monospace" }}>{$(total)}</span>
+                    </div>
+                  </>;
+                })()
             }
           </Card>
           <Card>
@@ -1323,7 +1345,7 @@ function ConV({ contractors, txns, biz, year, onAdd, onEdit, onDelete, onDetail,
 }
 
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
-function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
+function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax, bc }) {
   const [tab, setTab] = useState("pnl");
 
   // Use integer-cent summation to avoid floating-point drift
@@ -1353,7 +1375,7 @@ function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
 
   return <div>
     <div style={{ display: "flex", gap: 2, marginBottom: 20 }}>
-      {[{ id: "pnl", icon: "chart", label: "P&L" }, { id: "tax", icon: "pie", label: "Tax" }, { id: "sched", icon: "file", label: "Schedule C" }].map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "9px 14px", borderRadius: 8, border: "none", background: tab === t.id ? `${bc}22` : "transparent", color: tab === t.id ? bc : "#94a3b8", cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: "'DM Sans',sans-serif" }}><I name={t.icon} size={16} />{t.label}</button>)}
+      {[{ id: "pnl", icon: "chart", label: "P&L" }, { id: "tax", icon: "pie", label: "Tax" }, { id: "sched", icon: "file", label: "Schedule C" }, { id: "inv", icon: "send", label: "Invoices" }].map((t) => <button key={t.id} onClick={() => setTab(t.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "9px 14px", borderRadius: 8, border: "none", background: tab === t.id ? `${bc}22` : "transparent", color: tab === t.id ? bc : "#94a3b8", cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: "'DM Sans',sans-serif" }}><I name={t.icon} size={16} />{t.label}</button>)}
     </div>
     {tab === "pnl" && <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
@@ -1384,6 +1406,69 @@ function Reps({ txns, miles, year, totInc, totExp, net, mileDed, seTax, bc }) {
       {SCHEDULE_C.map((cat) => { const t = txns.filter((x) => x.type === "expense" && x.category === cat.code).reduce((s, x) => s + x.amount, 0); const clr = CAT_COLORS[cat.code] || "#ef4444"; return t > 0 ? <tr key={cat.code} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{cat.line}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: clr, flexShrink: 0 }} />{cat.label}</span></td><td style={{ padding: "10px 12px", textAlign: "right", color: clr, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(t)}</td></tr> : null; })}
       {miles.length > 0 && <tr><td style={{ padding: "10px 12px", fontSize: 13 }}>9</td><td style={{ padding: "10px 12px", fontSize: 13 }}>Car & truck (mileage)</td><td style={{ padding: "10px 12px", textAlign: "right", color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(miles.reduce((s, m) => s + m.miles * MILE_RATE, 0))}</td></tr>}
     </tbody></table></Card>}
+    {tab === "inv" && (() => {
+      const today = new Date().toISOString().slice(0, 10);
+      const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : null;
+      const unpaid = (invoices || []).filter((i) => i.status !== "Paid");
+      const paid   = (invoices || []).filter((i) => i.status === "Paid");
+      const totalOut = unpaid.reduce((s, i) => s + i.amount, 0);
+      const totalIn  = paid.reduce((s, i) => s + i.amount, 0);
+      const avgDays = paid.filter((i) => i.dueDate && i.date).map((i) => Math.max(0, Math.ceil((new Date(i.paidDate || today) - new Date(i.date)) / 86400000))).reduce((s, d, _, a) => s + d / a.length, 0);
+      const buckets = [
+        { label: "Current (not yet due)", color: "#22c55e", max: 0 },
+        { label: "1–30 days past due",    color: "#f59e0b", min: 1,  max: 30 },
+        { label: "31–60 days past due",   color: "#f97316", min: 31, max: 60 },
+        { label: "61–90 days past due",   color: "#ef4444", min: 61, max: 90 },
+        { label: "90+ days past due",     color: "#dc2626", min: 91 },
+      ].map((b) => ({ ...b, items: unpaid.filter((i) => { const d = age(i); if (d === null) return b.max === 0; if (b.min === undefined) return d <= 0; if (b.max === 0) return d <= 0; return d >= b.min && (b.max === undefined || d <= b.max); }) }));
+      return <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
+          <Stat label="Outstanding" value={$(totalOut)} color="#f59e0b" icon="send" />
+          <Stat label="Collected" value={$(totalIn)} color="#22c55e" icon="check" />
+          <Stat label="Total Invoices" value={(invoices || []).length} color={bc} icon="file" />
+          <Stat label="Avg Days Open" value={invoices?.length ? `${Math.round(avgDays)}d` : "—"} color="#8b5cf6" icon="calendar" />
+        </div>
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>AR Aging — {year}</div>
+          {unpaid.length === 0
+            ? <p style={{ color: "#64748b", fontSize: 13 }}>✓ No outstanding invoices.</p>
+            : <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                  {buckets.filter((b) => b.items.length > 0).map(({ label, color, items }) => {
+                    const total = items.reduce((s, i) => s + i.amount, 0);
+                    return <div key={label}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: color }} /><span style={{ color: "#d1d5db" }}>{label}</span><span style={{ color: "#475569" }}>({items.length})</span></span>
+                        <span style={{ color, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{$(total)}</span>
+                      </div>
+                      <div style={{ height: 4, background: "rgba(255,255,255,.06)", borderRadius: 2 }}>
+                        <div style={{ height: "100%", width: `${totalOut > 0 ? (total / totalOut) * 100 : 0}%`, background: color, borderRadius: 2, transition: "width .4s" }} />
+                      </div>
+                    </div>;
+                  })}
+                </div>
+                <Card style={{ padding: 0 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr>{["Invoice #", "Client", "Issued", "Due", "Age", "Amount", "Status"].map((h, i) => <th key={i} style={{ textAlign: i >= 4 ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: .6, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead>
+                    <tbody>{unpaid.sort((a, b) => (age(b) || 0) - (age(a) || 0)).map((inv) => {
+                      const d = age(inv); const col = d > 90 ? "#dc2626" : d > 60 ? "#ef4444" : d > 30 ? "#f97316" : d > 0 ? "#f59e0b" : "#22c55e";
+                      return <tr key={inv.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                        <td style={{ padding: "8px 12px", color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>{inv.invoiceNumber || "—"}</td>
+                        <td style={{ padding: "8px 12px", color: "#f1f5f9", fontWeight: 500 }}>{inv.clientName || "—"}</td>
+                        <td style={{ padding: "8px 12px", color: "#94a3b8" }}>{inv.date}</td>
+                        <td style={{ padding: "8px 12px", color: d > 0 ? col : "#94a3b8" }}>{inv.dueDate || "—"}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", color: col, fontWeight: 600 }}>{d !== null ? (d <= 0 ? "Current" : `${d}d`) : "—"}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: col, fontWeight: 600 }}>{$(inv.amount)}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}><Badge color={col}>{inv.status}</Badge></td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </Card>
+              </>
+          }
+        </Card>
+      </div>;
+    })()}
   </div>;
 }
 
@@ -1940,6 +2025,7 @@ function MileForm({ editId, date: d, purpose: p, from: fr, to: t, miles: m, note
 // ─── INVOICE PREVIEW / PRINT ─────────────────────────────────────────────────
 function InvoicePreview({ invoice, biz, onClose, onMarkPaid, onSent }) {
   const [copied, setCopied] = useState(false);
+  const [copiedReminder, setCopiedReminder] = useState(false);
   const bc = biz?.color || "#3b82f6";
   const inv = invoice;
   const sc = { Draft: "#94a3b8", Sent: "#3b82f6", Viewed: "#8b5cf6", Paid: "#22c55e", Overdue: "#ef4444" };
@@ -1975,10 +2061,33 @@ Thank you for your business!
 
 ${biz?.name || ""}${biz?.ein ? `\nEIN: ${biz.ein}` : ""}`;
 
+  const reminderDraft = `Subject: Payment Reminder – Invoice ${inv.invoiceNumber || ""} from ${biz?.name || ""}
+
+Hi ${inv.clientName || ""},
+
+I hope you're doing well. This is a friendly reminder that Invoice ${inv.invoiceNumber || ""} was due on ${inv.dueDate || "the date listed"} and remains unpaid.
+
+Invoice #:   ${inv.invoiceNumber || "N/A"}
+Due Date:    ${inv.dueDate || "N/A"}
+Amount Due:  ${$(grandTotal)}
+
+Please arrange payment at your earliest convenience, or reach out if there's anything I can help clarify.
+
+Thank you,
+
+${biz?.name || ""}${biz?.ein ? `\nEIN: ${biz.ein}` : ""}`;
+
   const copyEmail = () => {
     navigator.clipboard.writeText(emailDraft).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+      onSent?.();
+    });
+  };
+  const copyReminder = () => {
+    navigator.clipboard.writeText(reminderDraft).then(() => {
+      setCopiedReminder(true);
+      setTimeout(() => setCopiedReminder(false), 2500);
       onSent?.();
     });
   };
@@ -1990,6 +2099,11 @@ ${biz?.name || ""}${biz?.ein ? `\nEIN: ${biz.ein}` : ""}`;
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
         <Btn v="ghost" onClick={onClose}><I name="x" size={14} /> Close</Btn>
         <Btn v="ghost" onClick={copyEmail}><I name={copied ? "check" : "mail"} size={14} /> {copied ? "Copied!" : "Copy Email Draft"}</Btn>
+        {inv.status === "Overdue" && (
+          <Btn onClick={copyReminder} s={{ background: copiedReminder ? "#22c55e" : "linear-gradient(135deg,#ef4444,#dc2626)", color: "#fff" }}>
+            <I name={copiedReminder ? "check" : "mail"} size={14} /> {copiedReminder ? "Reminder Copied!" : "Send Reminder"}
+          </Btn>
+        )}
         {inv.status !== "Paid" && <Btn v="green" onClick={onMarkPaid}><I name="check" size={14} /> Mark Paid</Btn>}
         <Btn onClick={print} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print / Save PDF</Btn>
       </div>
