@@ -425,7 +425,7 @@ function App() {
         : view === "dashboard" ? <Dash {...{ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc, setView }} />
         : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
         : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
-        : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
+        : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} onImport={() => setModal({ t: "mile-import" })} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
         : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} biz={biz} />
@@ -437,6 +437,7 @@ function App() {
       {modal?.t === "csv-import" && <CsvImportModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={(count, failures) => { reload(); setSuccessToast({ msg: `${count} transaction${count !== 1 ? "s" : ""} imported from CSV${failures && failures.length ? ` (${failures.length} skipped)` : ""}`, items: [] }); if (failures && failures.length) setGlobalError(`${failures.length} row${failures.length !== 1 ? "s" : ""} could not be imported. First error: ${failures[0]}`); close(); }} onClose={close} />}
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
+      {modal?.t === "mile-import" && <MobileImportModal bizId={bizId} existingTrips={yMiles} onImport={async (trips) => { for (const t of trips) await put("mileage", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv-preview" && <InvoicePreview invoice={modal.d.invoice} biz={modal.d.biz} onClose={close} onMarkPaid={async () => { await put("invoices", { ...modal.d.invoice, status: "Paid", paidDate: td() }); reload(); close(); }} onSent={async () => { if (modal.d.invoice.status === "Draft") { await put("invoices", { ...modal.d.invoice, status: "Sent" }); reload(); } }} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
@@ -1226,11 +1227,116 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit,
 </>;
 }
 
+// ─── MOBILE IMPORT ───────────────────────────────────────────────────────────
+function MobileImportModal({ bizId, existingTrips, onImport, onClose }) {
+  const [rows, setRows] = React.useState(null);
+  const [sel, setSel] = React.useState(new Set());
+  const [err, setErr] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) { setErr("No data rows found in file."); return; }
+    const parsed = [];
+    for (let i = 1; i < lines.length; i++) {
+      // RFC-4180 compliant split (handles quoted commas)
+      const cols = [];
+      let cur = "", inQ = false;
+      for (const ch of lines[i] + ",") {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === "," && !inQ) { cols.push(cur.trim()); cur = ""; }
+        else cur += ch;
+      }
+      if (cols.length < 4) continue;
+      const rawDate = cols[0].replace(/"/g, "").trim();
+      const miles = parseFloat(cols[3].replace(/"/g, "").trim());
+      const purpose = (cols[4] || "Business").replace(/"/g, "").trim() || "Business";
+      if (!rawDate || isNaN(miles) || miles <= 0) continue;
+      let isoDate = null;
+      try { const d = new Date(rawDate); if (!isNaN(d)) isoDate = d.toISOString().slice(0, 10); } catch {}
+      if (!isoDate) continue;
+      const isDup = existingTrips.some(t => t.date === isoDate && Math.abs(t.miles - miles) < 0.05);
+      parsed.push({ id: uid(), date: isoDate, miles, purpose, isDup });
+    }
+    if (parsed.length === 0) { setErr("No valid trips found. Make sure you're using an OpenClaw Mobile CSV export."); return; }
+    setRows(parsed);
+    setSel(new Set(parsed.filter(r => !r.isDup).map(r => r.id)));
+    setErr(null);
+  };
+
+  const handleFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.name.endsWith(".csv")) { setErr("Please select a .csv file."); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { try { parseCSV(ev.target.result); } catch (ex) { setErr("Parse error: " + ex.message); } };
+    reader.readAsText(f);
+  };
+
+  const toggle = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const newCount = rows ? rows.filter(r => !r.isDup).length : 0;
+  const dupCount = rows ? rows.filter(r => r.isDup).length : 0;
+  const toggleAll = () => setSel(s => s.size === newCount ? new Set() : new Set(rows.filter(r => !r.isDup).map(r => r.id)));
+
+  const doImport = async () => {
+    setSaving(true);
+    const toSave = rows.filter(r => sel.has(r.id)).map(r => ({ id: uid(), bizId, date: r.date, purpose: r.purpose, from: "", to: "", miles: r.miles, notes: "Imported from OpenClaw Mobile" }));
+    await onImport(toSave);
+  };
+
+  return <Modal title="📱 Import from OpenClaw Mobile" onClose={onClose} w={640}>
+    <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+      Export your mileage log from the <strong style={{ color: "#f1f5f9" }}>OpenClaw Mobile</strong> app (Trips tab → <em>Export CSV</em>), then select the file below. Duplicate trips are automatically detected and skipped.
+    </p>
+
+    {!rows && <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "32px 24px", border: "2px dashed #334155", borderRadius: 12, cursor: "pointer", background: "rgba(59,130,246,.04)" }}>
+      <I name="upload" size={36} />
+      <span style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15 }}>Click to select CSV file</span>
+      <span style={{ color: "#64748b", fontSize: 12 }}>openclaw_mileage_YYYY.csv from OpenClaw Mobile</span>
+      <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
+    </label>}
+
+    {err && <p style={{ color: "#f87171", fontSize: 13, marginTop: 12, padding: "10px 14px", background: "rgba(239,68,68,.08)", borderRadius: 8, border: "1px solid rgba(239,68,68,.2)" }}>{err}</p>}
+
+    {rows && <>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 13, color: "#94a3b8" }}>{rows.length} trip{rows.length !== 1 ? "s" : ""} found</span>
+        {dupCount > 0 && <Badge color="#f59e0b">{dupCount} duplicate{dupCount !== 1 ? "s" : ""} skipped</Badge>}
+        <Badge color="#22c55e">{newCount} new</Badge>
+        <button onClick={toggleAll} style={{ marginLeft: "auto", background: "transparent", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+          {sel.size === newCount ? "Deselect All" : "Select All"}
+        </button>
+      </div>
+
+      <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, marginBottom: 16 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["", "Date", "Miles", "Purpose", "Status"].map((h, i) => <th key={i} style={{ textAlign: i <= 1 ? "center" : "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.6)", borderBottom: "1px solid rgba(255,255,255,.06)", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
+          <tbody>{rows.map(r => <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", opacity: r.isDup ? 0.45 : 1 }}>
+            <td style={{ padding: "9px 10px", textAlign: "center" }}><input type="checkbox" checked={sel.has(r.id)} onChange={() => !r.isDup && toggle(r.id)} disabled={r.isDup} style={{ cursor: r.isDup ? "default" : "pointer", accentColor: "#3b82f6" }} /></td>
+            <td style={{ padding: "9px 10px", fontSize: 13, fontFamily: "'JetBrains Mono',monospace" }}>{r.date}</td>
+            <td style={{ padding: "9px 10px", fontSize: 13, color: "#f59e0b", fontFamily: "'JetBrains Mono',monospace", textAlign: "right" }}>{r.miles.toFixed(2)}</td>
+            <td style={{ padding: "9px 10px", fontSize: 13, color: "#94a3b8" }}>{r.purpose}</td>
+            <td style={{ padding: "9px 10px" }}>{r.isDup ? <Badge color="#f59e0b">Duplicate</Badge> : <Badge color="#22c55e">New</Badge>}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "#64748b", marginRight: "auto" }}>{sel.size} trip{sel.size !== 1 ? "s" : ""} selected</span>
+        <Btn v="ghost" onClick={() => { setRows(null); setSel(new Set()); setErr(null); }}>Choose Different File</Btn>
+        <Btn onClick={doImport} disabled={sel.size === 0 || saving}>
+          <I name={saving ? "loader" : "download"} size={14} /> {saving ? "Importing…" : `Import ${sel.size} Trip${sel.size !== 1 ? "s" : ""}`}
+        </Btn>
+      </div>
+    </>}
+  </Modal>;
+}
+
 // ─── MILEAGE ──────────────────────────────────────────────────────────────────
-function MileV({ trips, rate, onAdd, onEdit, onDelete }) {
+function MileV({ trips, rate, onAdd, onEdit, onDelete, onImport }) {
   const tm = trips.reduce((s, t) => s + t.miles, 0);
   return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Mileage</h3><Btn onClick={onAdd}><I name="plus" size={15} /> Log Trip</Btn></div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Mileage</h3><div style={{ display: "flex", gap: 8 }}><Btn v="ghost" onClick={onImport}><I name="smartphone" size={15} /> Import from Mobile</Btn><Btn onClick={onAdd}><I name="plus" size={15} /> Log Trip</Btn></div></div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}><Stat label="Miles" value={`${tm.toFixed(1)}`} color="#f59e0b" icon="car" /><Stat label="Rate" value={`$${rate}/mi`} color="#94a3b8" icon="tag" /><Stat label="Deduction" value={$(tm * rate)} color="#22c55e" icon="dollar" /></div>
     {trips.length === 0 ? <Empty icon="car" text="No trips." /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Purpose", "Route", "Miles", "Ded.", ""].map((h, i) => <th key={i} style={{ textAlign: i >= 3 ? (i === 5 ? "center" : "right") : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{trips.map((t) => <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.purpose || "—"}</td><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{t.from || "?"} → {t.to || "?"}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b" }}>{t.miles.toFixed(1)}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#22c55e" }}>{$(t.miles * rate)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>)}</tbody></table></Card>}
   </div>;
