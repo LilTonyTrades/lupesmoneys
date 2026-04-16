@@ -423,7 +423,7 @@ function App() {
         : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
         : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
-        : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} bc={bc} />
+        : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
         : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
@@ -436,6 +436,7 @@ function App() {
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv-preview" && <InvoicePreview invoice={modal.d.invoice} biz={modal.d.biz} onClose={close} onMarkPaid={async () => { await put("invoices", { ...modal.d.invoice, status: "Paid", paidDate: td() }); reload(); close(); }} onSent={async () => { if (modal.d.invoice.status === "Draft") { await put("invoices", { ...modal.d.invoice, status: "Sent" }); reload(); } }} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
+      {modal?.t === "con-detail" && <ConDetailModal contractor={modal.d.contractor} txns={yTxns} year={year} biz={biz} onEdit={(c) => { close(); setTimeout(() => setModal({ t: "con", d: { ...c, editId: c.id } }), 50); }} onClose={close} />}
       {modal?.t === "rules" && <RulesModal bizId={bizId} rules={rules} txns={bizOnly} onSave={async (r) => { await put("rules", r); reload(); }} onDelete={async (id) => { await del("rules", id); reload(); }} onApply={async (updated) => { await Promise.all(updated.map(t => put("transactions", t))); reload(); setSuccessToast({ msg: `${updated.length} transaction${updated.length !== 1 ? "s" : ""} auto-categorized`, items: [] }); }} onClose={close} />}
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz" && <BizForm {...modal.d} onSave={async (b) => { await put("businesses", b); if (!bizId) setBizId(b.id); reload(); close(); }} onClose={close} />}
@@ -1256,13 +1257,68 @@ function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc })
 }
 
 // ─── CONTRACTORS ──────────────────────────────────────────────────────────────
-function ConV({ contractors, txns, onAdd, onEdit, onDelete, bc }) {
+function ConV({ contractors, txns, biz, year, onAdd, onEdit, onDelete, onDetail, bc }) {
+  const withPaid = contractors.map((c) => ({ ...c, paid: txns.filter((t) => t.type === "expense" && t.contractorId === c.id).reduce((s, t) => s + t.amount, 0) }));
+  const totalPaid = withPaid.reduce((s, c) => s + c.paid, 0);
+  const needs1099 = withPaid.filter((c) => c.paid >= 600);
+
+  const exportAll1099 = () => {
+    const rows = [["Payer Name", "Payer EIN", "Recipient Name", "Recipient EIN", "Recipient Email", "Recipient Phone", "Recipient Address", `Box 1 Nonemployee Comp (${year})`, "1099-NEC Required"]];
+    withPaid.filter((c) => c.paid > 0).sort((a, b) => b.paid - a.paid).forEach((c) => {
+      rows.push([biz?.name || "", biz?.ein || "", c.name, c.ein || "", c.email || "", c.phone || "", c.address || "", c.paid.toFixed(2), c.paid >= 600 ? "YES" : "No"]);
+    });
+    dlFile(rows.map(csvRow).join("\n"), `1099_Summary_${year}.csv`, "text/csv");
+  };
+
   return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Contractors & 1099</h3><Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn></div>
-    <Card style={{ marginBottom: 16, background: `${bc}0a`, borderLeft: `4px solid ${bc}` }}><p style={{ fontSize: 13, color: "#c4b5fd" }}>Track payments. $600+ triggers 1099-NEC.</p></Card>
-    {contractors.length === 0 ? <Empty icon="users" text="No contractors." /> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
-      {contractors.map((c) => { const paid = txns.filter((t) => t.type === "expense" && t.contractorId === c.id).reduce((s, t) => s + t.amount, 0); return <Card key={c.id}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}><div><div style={{ fontWeight: 600, color: "#f1f5f9", fontSize: 15 }}>{c.name}</div>{c.ein && <div style={{ fontSize: 11, color: "#94a3b8" }}>EIN: •••{c.ein.slice(-4)}</div>}{c.email && <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.email}</div>}</div><div style={{ display: "flex", gap: 4 }}><button onClick={() => onEdit(c)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer" }}><I name="edit" size={14} /></button><button onClick={() => onDelete(c.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer" }}><I name="trash" size={14} /></button></div></div><div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b" }}>{$(paid)}</span><Badge color={paid >= 600 ? "#ef4444" : "#22c55e"}>{paid >= 600 ? "1099 Req" : "<$600"}</Badge></div></Card>; })}
-    </div>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Contractors & 1099</h3>
+        {needs1099.length > 0 && <span style={{ fontSize: 11, background: "rgba(239,68,68,.15)", color: "#ef4444", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>⚠ {needs1099.length} need 1099-NEC</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {withPaid.some((c) => c.paid > 0) && <Btn v="ghost" onClick={exportAll1099}><I name="download" size={14} /> Export All 1099s</Btn>}
+        <Btn onClick={onAdd}><I name="plus" size={15} /> Add Contractor</Btn>
+      </div>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 }}>
+      <Stat label="Contractors" value={contractors.length} color={bc} icon="users" />
+      <Stat label="Total Paid" value={$(totalPaid)} color="#f59e0b" icon="dollar" />
+      <Stat label="Need 1099-NEC" value={needs1099.length} color={needs1099.length > 0 ? "#ef4444" : "#22c55e"} icon="file" />
+      <Stat label="Threshold" value="$600" color="#94a3b8" icon="tag" />
+    </div>
+
+    <Card style={{ marginBottom: 16, background: "rgba(99,102,241,.06)", borderLeft: "4px solid rgba(99,102,241,.4)" }}>
+      <p style={{ fontSize: 13, color: "#a5b4fc" }}>Contractors paid $600+ in a calendar year require a <strong>1099-NEC</strong>. Click a card to view payment history and export their 1099 data.</p>
+    </Card>
+
+    {contractors.length === 0 ? <Empty icon="users" text="No contractors added yet." /> :
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
+        {withPaid.sort((a, b) => b.paid - a.paid).map((c) => {
+          const needs = c.paid >= 600;
+          return <Card key={c.id} style={{ cursor: "pointer", transition: "border-color .15s", borderColor: needs ? "rgba(239,68,68,.25)" : undefined }} onClick={() => onDetail(c)}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 15 }}>{c.name}</div>
+                {c.ein && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>EIN: •••{c.ein.slice(-4)}</div>}
+                {c.email && <div style={{ fontSize: 11, color: "#64748b" }}>{c.email}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button title="Edit" onClick={(e) => { e.stopPropagation(); onEdit(c); }} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}><I name="edit" size={13} /></button>
+                <button title="Delete" onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 4 }}><I name="trash" size={13} /></button>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: needs ? "#f97316" : "#f59e0b" }}>{$(c.paid)}</span>
+              <Badge color={needs ? "#ef4444" : "#22c55e"}>{needs ? "1099-NEC Required" : "< $600"}</Badge>
+            </div>
+            {needs && <div style={{ marginTop: 8, height: 3, background: "rgba(239,68,68,.15)", borderRadius: 2 }}><div style={{ height: "100%", width: `${Math.min((c.paid / (c.paid * 1.5)) * 100, 100)}%`, background: "#ef4444", borderRadius: 2 }} /></div>}
+            <div style={{ marginTop: 8, fontSize: 11, color: "#475569" }}>Click to view payments →</div>
+          </Card>;
+        })}
+      </div>
+    }
   </div>;
 }
 
@@ -2101,6 +2157,95 @@ function InvForm({ editId, invoiceNumber: invNum, date: d, clientName: cn, clien
     </div>
   </Modal>;
 }
+// ─── CONTRACTOR DETAIL MODAL ─────────────────────────────────────────────────
+function ConDetailModal({ contractor: c, txns, year, biz, onEdit, onClose }) {
+  const payments = txns.filter((t) => t.type === "expense" && t.contractorId === c.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const ytdPayments = payments.filter((t) => t.date?.startsWith(String(year)));
+  const ytdTotal = ytdPayments.reduce((s, t) => s + t.amount, 0);
+  const needs1099 = ytdTotal >= 600;
+
+  const qRange = [[`${year}-01-01`, `${year}-03-31`], [`${year}-04-01`, `${year}-06-30`], [`${year}-07-01`, `${year}-09-30`], [`${year}-10-01`, `${year}-12-31`]];
+  const quarters = qRange.map(([s, e]) => ytdPayments.filter((t) => t.date >= s && t.date <= e).reduce((sum, t) => sum + t.amount, 0));
+  const maxQ = Math.max(...quarters, 1);
+
+  const export1099 = () => {
+    const rows = [["Field", "Value"], ["Recipient Name", c.name], ["Recipient EIN / SSN", c.ein || ""], ["Recipient Email", c.email || ""], ["Recipient Phone", c.phone || ""], ["Recipient Address", c.address || ""], [`Box 1 — Nonemployee Comp (${year})`, ytdTotal.toFixed(2)], ["1099-NEC Required", needs1099 ? "YES" : "No"], ["Payer Name", biz?.name || ""], ["Payer EIN", biz?.ein || ""]];
+    dlFile(rows.map(csvRow).join("\n"), `1099_${c.name.replace(/\s+/g, "_")}_${year}.csv`, "text/csv");
+  };
+
+  return (
+    <Modal title={`${c.name} — Payment History`} onClose={onClose} w={620}>
+      {/* Header info */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, padding: "14px 16px", background: "rgba(255,255,255,.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,.06)" }}>
+        <div>
+          {c.ein && <div style={{ fontSize: 12, color: "#94a3b8" }}>EIN: {c.ein}</div>}
+          {c.email && <div style={{ fontSize: 12, color: "#94a3b8" }}>{c.email}</div>}
+          {c.phone && <div style={{ fontSize: 12, color: "#94a3b8" }}>{c.phone}</div>}
+          {c.address && <div style={{ fontSize: 12, color: "#94a3b8" }}>{c.address}</div>}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: needs1099 ? "#f97316" : "#f59e0b" }}>{$(ytdTotal)}</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>paid in {year}</div>
+          <Badge color={needs1099 ? "#ef4444" : "#22c55e"}>{needs1099 ? "1099-NEC Required" : "Under $600 threshold"}</Badge>
+        </div>
+      </div>
+
+      {/* Quarterly breakdown */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 10 }}>Quarterly Breakdown — {year}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+          {["Q1", "Q2", "Q3", "Q4"].map((q, i) => (
+            <div key={q} style={{ background: "rgba(255,255,255,.03)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(255,255,255,.06)" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>{q}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: quarters[i] > 0 ? "#f59e0b" : "#334155" }}>{$(quarters[i])}</div>
+              <div style={{ marginTop: 6, height: 3, background: "rgba(255,255,255,.06)", borderRadius: 2 }}>
+                <div style={{ height: "100%", width: `${(quarters[i] / maxQ) * 100}%`, background: "#f59e0b", borderRadius: 2, transition: "width .4s" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Payment transactions */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 8 }}>All Payments ({payments.length})</div>
+        {payments.length === 0
+          ? <p style={{ color: "#475569", fontSize: 13 }}>No payments recorded. Link expenses to this contractor in the Expenses tab.</p>
+          : <Card style={{ padding: 0, maxHeight: 280, overflowY: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead><tr style={{ position: "sticky", top: 0, background: "rgba(15,15,26,.98)" }}>
+                  {["Date", "Description", "Amount"].map((h, i) => <th key={i} style={{ textAlign: i === 2 ? "right" : "left", padding: "8px 12px", fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .6, borderBottom: "1px solid rgba(255,255,255,.08)" }}>{h}</th>)}
+                </tr></thead>
+                <tbody>{payments.map((t) => (
+                  <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", background: t.date?.startsWith(String(year)) ? undefined : "rgba(0,0,0,.15)" }}>
+                    <td style={{ padding: "8px 12px", color: t.date?.startsWith(String(year)) ? "#94a3b8" : "#475569", whiteSpace: "nowrap" }}>{t.date}</td>
+                    <td style={{ padding: "8px 12px", color: "#d1d5db" }}>{t.description || t.vendor || "—"}</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: t.date?.startsWith(String(year)) ? "#f59e0b" : "#475569" }}>{$(t.amount)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </Card>
+        }
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Btn v="ghost" onClick={() => onEdit(c)}><I name="edit" size={14} /> Edit Contractor</Btn>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn v="ghost" onClick={onClose}>Close</Btn>
+          <Btn v={needs1099 ? "danger" : "ghost"} onClick={export1099}><I name="download" size={14} /> Export 1099 CSV</Btn>
+        </div>
+      </div>
+
+      {needs1099 && (
+        <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 8, fontSize: 12, color: "#fca5a5" }}>
+          <strong>Reminder:</strong> {c.name} was paid {$(ytdTotal)} in {year} — a 1099-NEC must be filed with the IRS by January 31, {year + 1}.
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function ConForm({ editId, name: n, ein: e, email: em, phone: ph, address: ad, bizId, onSave, onClose }) {
   const [f, setF] = useState({ name: n || "", ein: e || "", email: em || "", phone: ph || "", address: ad || "" });
   return <Modal title={`${editId ? "Edit" : "Add"} Contractor`} onClose={onClose}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Name" span><input placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={inp} /></Field><Field label="EIN"><input placeholder="XX-XXXXXXX" value={f.ein} onChange={(e) => setF({ ...f, ein: e.target.value })} style={inp} /></Field><Field label="Email"><input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} style={inp} /></Field><Field label="Phone"><input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} style={inp} /></Field><Field label="Address" span><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} style={inp} /></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.name) return; onSave({ id: editId || uid(), bizId, ...f }); }}><I name="check" size={15} /> {editId ? "Update" : "Add"}</Btn></div></Modal>;
