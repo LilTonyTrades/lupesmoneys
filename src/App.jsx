@@ -364,7 +364,7 @@ function App() {
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0f0f1a,#1a1a2e 50%,#16213e)", color: "#e2e8f0", minHeight: "100vh", fontSize: 14 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}@media print{body *{visibility:hidden!important}.ocb-invoice-paper,.ocb-invoice-paper *,.ocb-schedC-paper,.ocb-schedC-paper *{visibility:visible!important}.ocb-invoice-paper,.ocb-schedC-paper{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;background:#fff!important;z-index:99999!important;overflow:visible!important;box-shadow:none!important;border:none!important;border-radius:0!important}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}@media print{body *{visibility:hidden!important}.ocb-invoice-paper,.ocb-invoice-paper *,.ocb-schedC-paper,.ocb-schedC-paper *,.ocb-pl-paper,.ocb-pl-paper *{visibility:visible!important}.ocb-invoice-paper,.ocb-schedC-paper,.ocb-pl-paper{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;background:#fff!important;z-index:99999!important;overflow:visible!important;box-shadow:none!important;border:none!important;border-radius:0!important}}`}</style>
 
       {/* HEADER */}
       <header style={{ background: "rgba(15,15,26,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "10px 20px", position: "sticky", top: 0, zIndex: 100 }}>
@@ -1352,6 +1352,7 @@ function ConV({ contractors, txns, biz, year, onAdd, onEdit, onDelete, onDetail,
 function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax, bc, biz }) {
   const [tab, setTab] = useState("pnl");
   const [showSchedC, setShowSchedC] = useState(false);
+  const [showPL, setShowPL] = useState(false);
 
   // Use integer-cent summation to avoid floating-point drift
   const expByCat = {}, incByCat = {};
@@ -1390,7 +1391,10 @@ function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9" }}>Monthly P&L — {year}</div>
-          <Btn v="ghost" onClick={exportPnLCSV}><I name="download" size={14} /> Export CSV</Btn>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn v="ghost" onClick={exportPnLCSV}><I name="download" size={14} /> Export CSV</Btn>
+            <Btn onClick={() => setShowPL(true)} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print P&L</Btn>
+          </div>
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>{["Month", "Income", "Expenses", "Net"].map((h, i) => <th key={i} style={{ textAlign: i ? "right" : "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", borderBottom: "1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead>
@@ -1416,6 +1420,7 @@ function Reps({ txns, miles, invoices, year, totInc, totExp, net, mileDed, seTax
       {miles.length > 0 && <tr><td style={{ padding: "10px 12px", fontSize: 13 }}>9</td><td style={{ padding: "10px 12px", fontSize: 13 }}>Car & truck (mileage)</td><td style={{ padding: "10px 12px", textAlign: "right", color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(miles.reduce((s, m) => s + m.miles * MILE_RATE, 0))}</td></tr>}
     </tbody></table></Card></div>}
     {showSchedC && <ScheduleCPrint txns={txns} miles={miles} biz={biz} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} onClose={() => setShowSchedC(false)} />}
+    {showPL && <PLPrint txns={txns} miles={miles} biz={biz} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} onClose={() => setShowPL(false)} />}
     {tab === "inv" && (() => {
       const today = new Date().toISOString().slice(0, 10);
       const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : null;
@@ -2031,6 +2036,188 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
 function MileForm({ editId, date: d, purpose: p, from: fr, to: t, miles: m, notes: n, bizId, onSave, onClose }) {
   const [f, setF] = useState({ date: d || td(), purpose: p || "", from: fr || "", to: t || "", miles: m || "", notes: n || "" });
   return <Modal title={`${editId ? "Edit" : "Log"} Trip`} onClose={onClose}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Date"><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={inp} /></Field><Field label="Miles"><input type="number" step=".1" placeholder="0.0" value={f.miles} onChange={(e) => setF({ ...f, miles: e.target.value })} style={inp} /></Field><Field label="Purpose" span><input placeholder="Client meeting" value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} style={inp} /></Field><Field label="From"><input placeholder="Start" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} style={inp} /></Field><Field label="To"><input placeholder="Dest" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} style={inp} /></Field><Field label="Notes" span><textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ ...inp, resize: "vertical" }} /></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.miles) return; onSave({ id: editId || uid(), bizId, ...f, miles: parseFloat(f.miles) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div></Modal>;
+}
+
+// ─── P&L PRINT ───────────────────────────────────────────────────────────────
+function PLPrint({ txns, miles, biz, year, totInc, totExp, net, mileDed, seTax, onClose }) {
+  const qEst = seTax / 4;
+
+  // Monthly buckets
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const k = `${year}-${String(i + 1).padStart(2, "0")}`;
+    const mo = txns.filter((t) => t.date?.startsWith(k));
+    const inc = mo.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+    const exp = mo.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+    const miMo = miles.filter((m) => m.date?.startsWith(k)).reduce((s, m) => s + m.miles * MILE_RATE, 0);
+    return { label: mn(i + 1), inc, exp, miMo, net: inc - exp - miMo };
+  });
+
+  // Income by category
+  const incRows = INC_CATS.map((cat) => ({
+    ...cat,
+    total: txns.filter((t) => t.type === "income" && t.category === cat.code).reduce((s, t) => s + t.amount, 0),
+  })).filter((r) => r.total > 0);
+
+  // Expense by category, sorted desc
+  const expRows = SCHEDULE_C.map((cat) => ({
+    ...cat,
+    total: txns.filter((t) => t.type === "expense" && t.category === cat.code).reduce((s, t) => s + t.amount, 0),
+  })).filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
+
+  const totalMilesDed = miles.reduce((s, m) => s + m.miles * MILE_RATE, 0);
+  const adjustedNet = net; // already accounts for mileDed in parent
+
+  const cell  = { padding: "6px 12px", borderBottom: "1px solid #e5e7eb", fontSize: 12 };
+  const right = { ...cell, textAlign: "right", fontFamily: "'JetBrains Mono',monospace" };
+  const hdr   = { ...cell, fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: .6, background: "#f9fafb" };
+  const secHdr = { background: "#0f172a", color: "#fff", padding: "6px 12px", fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: "uppercase" };
+  const totalRow = { background: "#f0fdf4" };
+  const lossRow  = { background: "#fff7ed" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.82)", backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", zIndex: 400, overflowY: "auto", padding: "20px 16px 40px" }}>
+      {/* Action bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
+        <Btn v="ghost" onClick={onClose}><I name="x" size={14} /> Close</Btn>
+        <Btn onClick={() => window.print()} s={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", color: "#fff" }}><I name="printer" size={14} /> Print / Save PDF</Btn>
+      </div>
+
+      {/* Printable document */}
+      <div className="ocb-pl-paper" style={{ background: "#fff", color: "#111827", width: "100%", maxWidth: 760, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,.5)", fontFamily: "'DM Sans',sans-serif", overflow: "hidden" }}>
+
+        {/* Header */}
+        <div style={{ background: "#0f172a", padding: "20px 24px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>Profit & Loss Statement</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{biz?.name || "Business"}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,.6)", marginTop: 2 }}>January 1 – December 31, {year}{biz?.ein ? ` · EIN: ${biz.ein}` : ""}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: adjustedNet >= 0 ? "#22c55e" : "#ef4444", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1 }}>{$(adjustedNet)}</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 3 }}>Net {adjustedNet >= 0 ? "Profit" : "Loss"}</div>
+            </div>
+          </div>
+          {/* KPI strip */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.1)" }}>
+            {[["Revenue", $(totInc), "#4ade80"], ["Expenses", $(totExp), "#f87171"], ["Mileage Ded.", $(totalMilesDed), "#fbbf24"], ["SE Tax Est.", $(seTax), "#a78bfa"]].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: .8 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* INCOME */}
+        <div style={secHdr}>Income</div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={{ ...hdr, textAlign: "left" }}>Category</th>
+            <th style={{ ...hdr, textAlign: "right" }}>IRS Line</th>
+            <th style={{ ...hdr, textAlign: "right" }}>Amount</th>
+          </tr></thead>
+          <tbody>
+            {incRows.length === 0
+              ? <tr><td colSpan={3} style={{ ...cell, color: "#9ca3af", textAlign: "center" }}>No income recorded</td></tr>
+              : incRows.map((r) => (
+                <tr key={r.code}>
+                  <td style={cell}>{r.label}</td>
+                  <td style={{ ...right, color: "#6b7280" }}>{r.line}</td>
+                  <td style={{ ...right, color: "#16a34a", fontWeight: 600 }}>{$(r.total)}</td>
+                </tr>
+              ))
+            }
+            <tr style={totalRow}>
+              <td style={{ ...cell, fontWeight: 700, color: "#166534" }} colSpan={2}>Total Income</td>
+              <td style={{ ...right, fontWeight: 700, color: "#16a34a", fontSize: 14 }}>{$(totInc)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* EXPENSES */}
+        <div style={secHdr}>Expenses</div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={{ ...hdr, textAlign: "left" }}>Category</th>
+            <th style={{ ...hdr, textAlign: "right" }}>IRS Line</th>
+            <th style={{ ...hdr, textAlign: "right" }}>Amount</th>
+          </tr></thead>
+          <tbody>
+            {expRows.length === 0 && totalMilesDed === 0
+              ? <tr><td colSpan={3} style={{ ...cell, color: "#9ca3af", textAlign: "center" }}>No expenses recorded</td></tr>
+              : <>
+                  {expRows.map((r) => (
+                    <tr key={r.code}>
+                      <td style={cell}>{r.label}</td>
+                      <td style={{ ...right, color: "#6b7280" }}>{r.line}</td>
+                      <td style={{ ...right, color: "#dc2626", fontWeight: 600 }}>{$(r.total)}</td>
+                    </tr>
+                  ))}
+                  {totalMilesDed > 0 && (
+                    <tr>
+                      <td style={cell}>Car & truck — Mileage ({miles.reduce((s, m) => s + m.miles, 0).toFixed(1)} mi × ${MILE_RATE}/mi)</td>
+                      <td style={{ ...right, color: "#6b7280" }}>9</td>
+                      <td style={{ ...right, color: "#dc2626", fontWeight: 600 }}>{$(totalMilesDed)}</td>
+                    </tr>
+                  )}
+                </>
+            }
+            <tr style={lossRow}>
+              <td style={{ ...cell, fontWeight: 700, color: "#9a3412" }} colSpan={2}>Total Expenses</td>
+              <td style={{ ...right, fontWeight: 700, color: "#dc2626", fontSize: 14 }}>{$(totExp + totalMilesDed)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* NET PROFIT */}
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>
+            <tr style={{ background: adjustedNet >= 0 ? "#f0fdf4" : "#fff7ed", borderTop: "3px solid " + (adjustedNet >= 0 ? "#22c55e" : "#f97316") }}>
+              <td style={{ ...cell, fontWeight: 800, fontSize: 15, color: adjustedNet >= 0 ? "#166534" : "#9a3412" }}>Net {adjustedNet >= 0 ? "Profit" : "Loss"}</td>
+              <td style={{ ...right, fontWeight: 800, fontSize: 18, color: adjustedNet >= 0 ? "#16a34a" : "#ea580c" }}>{$(adjustedNet)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* MONTHLY SUMMARY */}
+        <div style={secHdr}>Monthly Summary</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <thead><tr>
+            {["Month", "Income", "Expenses", "Mileage", "Net"].map((h, i) => (
+              <th key={i} style={{ ...hdr, textAlign: i === 0 ? "left" : "right", fontSize: 9 }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {months.map(({ label, inc, exp, miMo, net: mNet }) => (
+              <tr key={label} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                <td style={{ ...cell, padding: "4px 12px", color: "#374151" }}>{label}</td>
+                <td style={{ ...right, padding: "4px 12px", color: inc > 0 ? "#16a34a" : "#d1d5db" }}>{inc > 0 ? $(inc) : "—"}</td>
+                <td style={{ ...right, padding: "4px 12px", color: exp > 0 ? "#dc2626" : "#d1d5db" }}>{exp > 0 ? $(exp) : "—"}</td>
+                <td style={{ ...right, padding: "4px 12px", color: miMo > 0 ? "#d97706" : "#d1d5db" }}>{miMo > 0 ? $(miMo) : "—"}</td>
+                <td style={{ ...right, padding: "4px 12px", fontWeight: 600, color: mNet >= 0 ? "#16a34a" : "#ea580c" }}>{$(mNet)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "2px solid #e5e7eb" }}>
+              <td style={{ ...cell, fontWeight: 700, color: "#111827" }}>YTD Total</td>
+              <td style={{ ...right, fontWeight: 700, color: "#16a34a" }}>{$(totInc)}</td>
+              <td style={{ ...right, fontWeight: 700, color: "#dc2626" }}>{$(totExp)}</td>
+              <td style={{ ...right, fontWeight: 700, color: "#d97706" }}>{$(totalMilesDed)}</td>
+              <td style={{ ...right, fontWeight: 700, color: adjustedNet >= 0 ? "#16a34a" : "#ea580c" }}>{$(adjustedNet)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Footer */}
+        <div style={{ padding: "10px 24px", borderTop: "2px solid #e5e7eb", display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9ca3af" }}>
+          <span>Generated by OpenClaw Books · {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+          <span>For informational purposes only</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── SCHEDULE C PRINT ────────────────────────────────────────────────────────
