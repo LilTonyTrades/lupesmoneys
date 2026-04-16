@@ -1499,12 +1499,93 @@ function GoalsV({ goals, totInc, net, year, onAdd, onDelete, bc }) {
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
 function ExpV({ txns, year, yTxns, miles, totInc, totExp, mileDed, biz, bc }) {
+  const [pkgState, setPkgState] = useState("idle"); // idle | running | done
+  const [pkgStep, setPkgStep] = useState(0); // 0-5
+
   const yMi = miles.filter((m) => m.date?.startsWith(String(year)));
   const ct = yTxns.length + yMi.length;
   const bn = (biz?.name || "business").replace(/\s+/g, "_");
+
+  const dl = (content, name, mime) => new Promise((res) => {
+    dlFile(content, name, mime);
+    setTimeout(res, 700);
+  });
+
+  const PKG_STEPS = ["TurboTax (.txf)", "Transactions (.csv)", "Mileage log (.csv)", "1099 Summary (.csv)", "P&L Report (.csv)"];
+
+  const downloadPackage = async () => {
+    if (ct === 0) return;
+    setPkgState("running");
+    setPkgStep(0);
+    try {
+      // 1. TXF
+      await dl(makeTXF(txns, year, biz?.name), `${bn}_${year}.txf`, "text/plain");
+      setPkgStep(1);
+      // 2. Transactions CSV
+      await dl(makeCSV(txns, year), `${bn}_${year}_transactions.csv`, "text/csv");
+      setPkgStep(2);
+      // 3. Mileage CSV
+      const mh = csvRow(["Date","Purpose","From","To","Miles","Deduction"]) + "\n";
+      const mr = yMi.map((m) => csvRow([m.date, m.purpose||"", m.from||"", m.to||"", m.miles.toFixed(1), (m.miles*MILE_RATE).toFixed(2)])).join("\n");
+      await dl(mh + mr, `${bn}_${year}_mileage.csv`, "text/csv");
+      setPkgStep(3);
+      // 4. 1099 Summary CSV
+      const cs = (await getAll("contractors")).filter((c) => c.bizId === biz?.id);
+      const at = (await getAll("transactions")).filter((t) => t.date?.startsWith(String(year)) && t.bizId === biz?.id);
+      const ch = csvRow(["Name","EIN","Email","Paid","1099?"]) + "\n";
+      const cr = cs.map((c) => { const p = at.filter((t) => t.contractorId === c.id).reduce((s, t) => s + t.amount, 0); return csvRow([c.name, c.ein||"", c.email||"", p.toFixed(2), p >= 600 ? "Yes" : "No"]); }).join("\n");
+      await dl(ch + cr, `${bn}_${year}_1099_summary.csv`, "text/csv");
+      setPkgStep(4);
+      // 5. P&L CSV
+      const monthly = {};
+      for (let m = 1; m <= 12; m++) monthly[mn(m)] = { inc: 0, exp: 0 };
+      yTxns.filter((t) => t.scope !== "personal").forEach((t) => { const mo = mn(parseInt(t.date?.slice(5,7))); if (monthly[mo]) { if (t.type === "income") monthly[mo].inc += t.amount; else monthly[mo].exp += t.amount; } });
+      const plRows = [["Month","Income","Expenses","Mileage","Net"]];
+      Object.entries(monthly).forEach(([mo, v]) => { const miMo = yMi.filter((m) => mn(parseInt(m.date?.slice(5,7))) === mo).reduce((s, m) => s + m.miles * MILE_RATE, 0); plRows.push([mo, v.inc.toFixed(2), v.exp.toFixed(2), miMo.toFixed(2), (v.inc - v.exp - miMo).toFixed(2)]); });
+      plRows.push(["TOTAL", totInc.toFixed(2), totExp.toFixed(2), mileDed.toFixed(2), (totInc - totExp - mileDed).toFixed(2)]);
+      await dl(plRows.map(csvRow).join("\n"), `${bn}_${year}_PnL.csv`, "text/csv");
+      setPkgStep(5);
+      setPkgState("done");
+    } catch (e) {
+      setPkgState("idle");
+      setPkgStep(0);
+    }
+  };
+
   return <div>
     <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9", marginBottom: 6 }}>Export — {biz?.name} — {year}</h3>
     <p style={{ color: "#94a3b8", marginBottom: 20, fontSize: 13 }}>{ct} records · {$(totInc)} inc · {$(totExp)} exp · {$(mileDed)} mileage</p>
+
+    {/* ── Year-End Tax Package ── */}
+    <div style={{ marginBottom: 24, padding: "20px 24px", borderRadius: 14, background: "linear-gradient(135deg,rgba(99,102,241,.15),rgba(6,182,212,.08))", border: "1px solid rgba(99,102,241,.35)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", marginBottom: 4 }}>📦 Year-End Tax Package — {year}</div>
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 12 }}>Downloads all 5 files at once: TXF · Transactions · Mileage · 1099s · P&L</div>
+          {pkgState !== "idle" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 4 }}>
+                {PKG_STEPS.map((label, i) => (
+                  <div key={i} title={label} style={{ flex: 1, height: 5, borderRadius: 3, background: pkgStep > i ? "#22c55e" : pkgStep === i && pkgState === "running" ? "linear-gradient(90deg,#6366f1,#06b6d4)" : "rgba(255,255,255,.08)", transition: "background .3s", animation: pkgStep === i && pkgState === "running" ? "shimmer 1.2s linear infinite" : undefined, backgroundSize: "200% 100%" }} />
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: pkgState === "done" ? "#4ade80" : "#a5b4fc" }}>
+                {pkgState === "done" ? "✓ All 5 files downloaded — check your Downloads folder" : `Downloading ${PKG_STEPS[pkgStep]}…`}
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          {pkgState === "done" && <Btn v="ghost" onClick={() => { setPkgState("idle"); setPkgStep(0); }}>Reset</Btn>}
+          <Btn onClick={downloadPackage} disabled={ct === 0 || pkgState === "running"} s={{ background: "linear-gradient(135deg,#6366f1,#06b6d4)", color: "#fff", padding: "10px 20px", fontSize: 14 }}>
+            <I name="download" size={16} /> {pkgState === "running" ? "Downloading…" : pkgState === "done" ? "Download Again" : "Download All 5 Files"}
+          </Btn>
+        </div>
+      </div>
+    </div>
+
+    {/* Individual exports */}
+    <div style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, fontWeight: 600, marginBottom: 10 }}>Or download individually</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 16 }}>
       {[
         { title: "TXF", desc: "TurboTax import", ext: ".txf", fn: () => dlFile(makeTXF(txns, year, biz?.name), `${bn}_${year}.txf`, "text/plain"), icon: "file" },
