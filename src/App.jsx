@@ -436,7 +436,7 @@ function App() {
       {modal?.t === "inv" && <InvForm {...modal.d} bizId={bizId} onSave={async (i) => { await put("invoices", i); reload(); close(); }} onClose={close} />}
       {modal?.t === "inv-preview" && <InvoicePreview invoice={modal.d.invoice} biz={modal.d.biz} onClose={close} onMarkPaid={async () => { await put("invoices", { ...modal.d.invoice, status: "Paid", paidDate: td() }); reload(); close(); }} onSent={async () => { if (modal.d.invoice.status === "Draft") { await put("invoices", { ...modal.d.invoice, status: "Sent" }); reload(); } }} />}
       {modal?.t === "con" && <ConForm {...modal.d} bizId={bizId} onSave={async (c) => { await put("contractors", c); reload(); close(); }} onClose={close} />}
-      {modal?.t === "con-detail" && <ConDetailModal contractor={modal.d.contractor} txns={yTxns} year={year} biz={biz} onEdit={(c) => { close(); setTimeout(() => setModal({ t: "con", d: { ...c, editId: c.id } }), 50); }} onClose={close} />}
+      {modal?.t === "con-detail" && <ConDetailModal contractor={modal.d.contractor} txns={bTxns} year={year} biz={biz} onEdit={(c) => { close(); setTimeout(() => setModal({ t: "con", d: { ...c, editId: c.id } }), 50); }} onClose={close} />}
       {modal?.t === "rules" && <RulesModal bizId={bizId} rules={rules} txns={bizOnly} onSave={async (r) => { await put("rules", r); reload(); }} onDelete={async (id) => { await del("rules", id); reload(); }} onApply={async (updated) => { await Promise.all(updated.map(t => put("transactions", t))); reload(); setSuccessToast({ msg: `${updated.length} transaction${updated.length !== 1 ? "s" : ""} auto-categorized`, items: [] }); }} onClose={close} />}
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz" && <BizForm {...modal.d} onSave={async (b) => { await put("businesses", b); if (!bizId) setBizId(b.id); reload(); close(); }} onClose={close} />}
@@ -912,9 +912,9 @@ function Dash({ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMile
             {unpaid.length === 0
               ? <p style={{ color: "#64748b", fontSize: 13 }}>✓ All invoices paid!</p>
               : (() => {
-                  const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : -1;
+                  const age = (inv) => inv.dueDate ? Math.ceil((new Date(today) - new Date(inv.dueDate)) / 86400000) : null;
                   const buckets = [
-                    { label: "Current", color: "#22c55e", items: unpaid.filter((i) => age(i) <= 0) },
+                    { label: "Current", color: "#22c55e", items: unpaid.filter((i) => age(i) === null || age(i) <= 0) },
                     { label: "1–30 days", color: "#f59e0b", items: unpaid.filter((i) => age(i) >= 1 && age(i) <= 30) },
                     { label: "31–60 days", color: "#f97316", items: unpaid.filter((i) => age(i) >= 31 && age(i) <= 60) },
                     { label: "61–90 days", color: "#ef4444", items: unpaid.filter((i) => age(i) >= 61 && age(i) <= 90) },
@@ -1172,7 +1172,7 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit,
   if (scope === "personal") f = f.filter((t) => t.scope === "personal");
   if (searchQ) { const q = searchQ.toLowerCase(); f = f.filter((t) => (t.description || "").toLowerCase().includes(q) || (t.vendor || "").toLowerCase().includes(q)); }
   const total = sumAmt(f, (t) => t.amount);
-  const uncatCount = type === "expense" ? f.filter((t) => !t.category).length : 0;
+  const uncatCount = type === "expense" ? f.filter((t) => !SCHEDULE_C.find((c) => c.code === t.category)).length : 0;
   return <><div>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1264,7 +1264,7 @@ function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc })
         <td style={{ padding: "10px 12px", fontSize: 12, color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>{i.invoiceNumber || "—"}</td>
         <td style={{ padding: "10px 12px", fontSize: 13 }}>{i.date}</td>
         <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500, color: "#f1f5f9" }}>{i.clientName || "—"}</td>
-        <td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.description || "—"}</td>
+        <td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.lineItems?.[0]?.description || i.description || "—"}</td>
         <td style={{ padding: "10px 12px" }}><Badge color={sc[i.status] || "#94a3b8"}>{i.status}</Badge>{i.dueDate && i.status !== "Paid" && <div style={{ fontSize: 10, color: isOverdue ? "#ef4444" : "#64748b", marginTop: 2 }}>Due {i.dueDate}</div>}</td>
         <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: i.status === "Paid" ? "#22c55e" : isOverdue ? "#ef4444" : "#f59e0b" }}>{$(i.amount)}</td>
         <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
