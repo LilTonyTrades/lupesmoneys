@@ -1,10 +1,7 @@
 // ─── Feature Flags ────────────────────────────────────────────────────────────
-// To restrict a feature to paid subscribers, flip its value to false and push
-// a release. The UI will automatically show a locked "Pro" state instead of
-// the live feature — no other code changes needed.
-//
-// To re-enable, flip back to true and push another release.
-
+// Flip to false to show a locked Pro paywall instead of the live feature.
 export const FEATURES = Object.freeze({
-  BATCH_SCAN: true,   // Batch receipt scanning (paid feature — lock by setting false)
+  BATCH_SCAN:    true,   // Batch receipt scanning
+  TAX_ESTIMATE:  true,   // Quarterly tax cockpit widget
+  EXPORT_READY:  true,   // Schedule C export readiness bar
 });

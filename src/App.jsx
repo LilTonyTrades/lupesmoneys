@@ -35,6 +35,15 @@ const INC_CATS = [
   { code: "I03", label: "Other income", line: "6" },
 ];
 const MILE_RATE = 0.70;
+// Muted per-category color palette for Schedule C lines (WCAG AA on dark bg)
+const CAT_COLORS = {
+  L01: "#f97316", L02: "#f59e0b", L03: "#eab308", L04: "#84cc16",
+  L05: "#22c55e", L06: "#10b981", L07: "#14b8a6", L08: "#06b6d4",
+  L09: "#0ea5e9", L10: "#3b82f6", L11: "#6366f1", L12: "#8b5cf6",
+  L13: "#a855f7", L14: "#d946ef", L15: "#ec4899", L16: "#f43f5e",
+  L17: "#fb923c", L18: "#fbbf24", L19: "#a3e635", L20: "#4ade80",
+  L21: "#34d399", L22: "#2dd4bf", L23: "#94a3b8", L24: "#c084fc",
+};
 const SE_RATE = 0.153;
 const INV_ST = ["Draft", "Sent", "Viewed", "Paid", "Overdue"];
 
@@ -401,7 +410,7 @@ function App() {
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 80px" }}>
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
-        : view === "dashboard" ? <Dash {...{ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc }} />
+        : view === "dashboard" ? <Dash {...{ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc, setView }} />
         : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
         : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} bc={bc} />
         : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} bc={bc} />
@@ -508,62 +517,229 @@ function BizManage({ businesses, currentId, onSwitch, onEdit, onDelete, onClose 
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dash({ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc }) {
+function DonutChart({ slices, size = 150, thickness = 30 }) {
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (!total) return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: "#475569", fontSize: 11 }}>No data</span>
+    </div>
+  );
+  const r = (size - thickness) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  let angle = -Math.PI / 2;
+  const paths = slices.filter(s => s.value > 0).map((s, i) => {
+    const sweep = (s.value / total) * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(angle);
+    const y1 = cy + r * Math.sin(angle);
+    angle += sweep;
+    const x2 = cx + r * Math.cos(angle);
+    const y2 = cy + r * Math.sin(angle);
+    const large = sweep > Math.PI ? 1 : 0;
+    return { d: `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`, color: s.color, key: i };
+  });
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {paths.map(p => <path key={p.key} d={p.d} fill={p.color} opacity={0.85} />)}
+      <circle cx={cx} cy={cy} r={r - thickness / 2} fill="#0f0f1a" />
+    </svg>
+  );
+}
+
+function Dash({ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc, setView }) {
+  // ── Monthly bar data
   const monthly = {};
-  for (let m = 1; m <= 12; m++) { const k = `${year}-${String(m).padStart(2, "0")}`; monthly[k] = { income: 0, expense: 0 }; }
+  for (let m = 1; m <= 12; m++) {
+    const k = `${year}-${String(m).padStart(2, "0")}`;
+    monthly[k] = { income: 0, expense: 0 };
+  }
   bizOnly.forEach((t) => { const k = t.date?.slice(0, 7); if (monthly[k]) monthly[k][t.type] += t.amount; });
   const mArr = Object.entries(monthly);
   const maxM = Math.max(...mArr.map(([, v]) => Math.max(v.income, v.expense)), 1);
+
+  // ── Expense by category (donut + top list)
   const expByCat = {};
-  bizOnly.filter((t) => t.type === "expense").forEach((t) => { const c = SCHEDULE_C.find((c) => c.code === t.category); expByCat[c?.label || "Other"] = (expByCat[c?.label || "Other"] || 0) + t.amount; });
-  const topCats = Object.entries(expByCat).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const maxCat = topCats[0]?.[1] || 1;
+  bizOnly.filter((t) => t.type === "expense").forEach((t) => {
+    const key = SCHEDULE_C.find((c) => c.code === t.category) ? t.category : "L23";
+    expByCat[key] = (expByCat[key] || 0) + t.amount;
+  });
+  const donutSlices = Object.entries(expByCat)
+    .map(([code, value]) => ({ color: CAT_COLORS[code] || "#94a3b8", value, label: SCHEDULE_C.find((c) => c.code === code)?.label || "Other", code }))
+    .sort((a, b) => b.value - a.value);
+  const topCats = donutSlices.slice(0, 8);
+
+  // ── Export readiness
+  const expTxns = bizOnly.filter((t) => t.type === "expense");
+  const uncatCount = expTxns.filter((t) => !SCHEDULE_C.find((c) => c.code === t.category)).length;
+  const readinessPct = expTxns.length === 0 ? 100 : Math.round(((expTxns.length - uncatCount) / expTxns.length) * 100);
+
+  // ── Quarterly deadline
+  const today = td();
+  const qDue = [
+    [`${year}-04-15`, "Q1", `Apr 15, ${year}`],
+    [`${year}-06-15`, "Q2", `Jun 15, ${year}`],
+    [`${year}-09-15`, "Q3", `Sep 15, ${year}`],
+    [`${year + 1}-01-15`, "Q4", `Jan 15, ${year + 1}`],
+  ];
+  const nextQ = qDue.find(([d]) => d >= today) || qDue[3];
+  const daysUntil = Math.ceil((new Date(nextQ[0]) - new Date(today)) / 86400000);
   const unpaid = yInvs.filter((i) => i.status !== "Paid");
   const totalMiles = yMiles.reduce((s, m) => s + m.miles, 0);
-  const qDue = [[`${year}-04-15`, "Q1"], [`${year}-06-15`, "Q2"], [`${year}-09-15`, "Q3"], [`${year + 1}-01-15`, "Q4"]];
-  const nextQ = qDue.find(([d]) => d >= td()) || qDue[3];
+  const effectiveRate = net > 0 ? Math.round((seTax / net) * 100) : 0;
 
-  return <div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 24 }}>
-      <Stat label="Income" value={$(totInc)} color="#22c55e" icon="dollar" />
-      <Stat label="Expenses" value={$(totExp)} color="#ef4444" icon="receipt" />
-      <Stat label="Mileage Ded." value={$(mileDed)} color="#f59e0b" icon="car" />
-      <Stat label="Net Profit" value={$(net)} color={net >= 0 ? "#3b82f6" : "#f97316"} icon="chart" />
-      <Stat label="Est. SE Tax" value={$(seTax)} color="#8b5cf6" icon="pie" />
-      <Stat label="Quarterly Est." value={$(qEst)} color="#06b6d4" icon="calendar" />
-    </div>
-    <Card style={{ marginBottom: 20, background: "rgba(6,182,212,.08)", borderLeft: "4px solid #06b6d4" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div><span style={{ fontWeight: 600, color: "#22d3ee" }}>Next Estimated Tax: {nextQ[1]}</span><br /><span style={{ fontSize: 12, color: "#94a3b8" }}>Due {nextQ[0]} · {$(qEst)}</span></div>
-        <Badge color="#06b6d4">{totalMiles.toFixed(1)} mi</Badge>
+  return (
+    <div>
+      {/* Stat strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 14, marginBottom: 20 }}>
+        <Stat label="Income" value={$(totInc)} color="#22c55e" icon="dollar" />
+        <Stat label="Expenses" value={$(totExp)} color="#ef4444" icon="receipt" />
+        <Stat label="Mileage Ded." value={$(mileDed)} color="#f59e0b" icon="car" />
+        <Stat label="Net Profit" value={$(net)} color={net >= 0 ? "#3b82f6" : "#f97316"} icon="chart" />
+        <Stat label="Est. SE Tax" value={$(seTax)} color="#8b5cf6" icon="pie" />
+        <Stat label="Effective Rate" value={`${effectiveRate}%`} color="#06b6d4" icon="calendar" />
       </div>
-    </Card>
-    <Card style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Monthly Overview</div>
-      <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 140 }}>
-        {mArr.map(([k, v]) => <div key={k} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}>
-          <div style={{ flex: 1, display: "flex", gap: 1, alignItems: "flex-end", width: "100%" }}>
-            <div style={{ flex: 1, background: "#22c55e", borderRadius: "2px 2px 0 0", minHeight: 1, height: `${(v.income / maxM) * 100}%`, transition: "height .4s" }} />
-            <div style={{ flex: 1, background: "#ef4444", borderRadius: "2px 2px 0 0", minHeight: 1, height: `${(v.expense / maxM) * 100}%`, transition: "height .4s" }} />
+
+      {/* Tax Readiness Cockpit */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+        {/* Quarterly deadline */}
+        <Card style={{ background: "linear-gradient(135deg,rgba(99,102,241,.12),rgba(6,182,212,.08))", borderColor: "rgba(99,102,241,.3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Next Quarterly Tax</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", fontFamily: "'JetBrains Mono',monospace" }}>{$(qEst)}</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{nextQ[1]} · Due {nextQ[2]}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: daysUntil <= 14 ? "#f97316" : daysUntil <= 30 ? "#f59e0b" : "#a5b4fc", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1 }}>{daysUntil}</div>
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>days away</div>
+            </div>
           </div>
-          <span style={{ fontSize: 9, color: "#64748b", marginTop: 4 }}>{mn(+k.slice(5))}</span>
-        </div>)}
+          <div style={{ display: "flex", gap: 6 }}>
+            {qDue.map(([d, label]) => {
+              const isPast = d < today;
+              const isNext = d === nextQ[0];
+              return (
+                <div key={label} style={{ flex: 1, textAlign: "center", padding: "5px 0", borderRadius: 6, background: isNext ? "rgba(99,102,241,.25)" : isPast ? "rgba(34,197,94,.1)" : "rgba(255,255,255,.04)", border: `1px solid ${isNext ? "rgba(99,102,241,.5)" : isPast ? "rgba(34,197,94,.2)" : "rgba(255,255,255,.06)"}` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: isNext ? "#a5b4fc" : isPast ? "#4ade80" : "#475569" }}>{label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Export readiness */}
+        <Card style={{ background: readinessPct === 100 ? "linear-gradient(135deg,rgba(34,197,94,.1),rgba(16,185,129,.06))" : readinessPct >= 80 ? "linear-gradient(135deg,rgba(245,158,11,.08),rgba(234,179,8,.05))" : "linear-gradient(135deg,rgba(239,68,68,.1),rgba(249,115,22,.06))", borderColor: readinessPct === 100 ? "rgba(34,197,94,.3)" : readinessPct >= 80 ? "rgba(245,158,11,.3)" : "rgba(239,68,68,.3)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: readinessPct === 100 ? "#22c55e" : readinessPct >= 80 ? "#f59e0b" : "#ef4444", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Schedule C Readiness</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 10 }}>
+            <span style={{ fontSize: 28, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: readinessPct === 100 ? "#4ade80" : readinessPct >= 80 ? "#fbbf24" : "#f87171" }}>{readinessPct}%</span>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>categorized</span>
+          </div>
+          <div style={{ height: 6, background: "rgba(255,255,255,.06)", borderRadius: 3, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ height: "100%", width: `${readinessPct}%`, background: readinessPct === 100 ? "#22c55e" : readinessPct >= 80 ? "#f59e0b" : "#ef4444", borderRadius: 3, transition: "width .5s" }} />
+          </div>
+          {uncatCount > 0
+            ? <button onClick={() => setView("expenses")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12, color: "#f59e0b", textDecoration: "underline" }}>
+                {uncatCount} expense{uncatCount !== 1 ? "s" : ""} need a category →
+              </button>
+            : <span style={{ fontSize: 12, color: "#4ade80" }}>✓ All expenses categorized — ready to export</span>
+          }
+        </Card>
       </div>
-      <div style={{ display: "flex", gap: 16, marginTop: 10, justifyContent: "center" }}>
-        {[["#22c55e", "Income"], ["#ef4444", "Expenses"]].map(([c, l]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: c }} />{l}</span>)}
-      </div>
-    </Card>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      <Card>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Top Expenses</div>
-        {topCats.length === 0 ? <p style={{ color: "#64748b", fontSize: 13 }}>None yet.</p> : topCats.map(([l, t]) => <div key={l} style={{ marginBottom: 10 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: "#d1d5db" }}>{l}</span><span style={{ color: "#f9fafb", fontWeight: 600 }}>{$(t)}</span></div><PBar value={t} max={maxCat} color={bc} /></div>)}
+
+      {/* Monthly bar chart */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Monthly Overview — {year}</div>
+        <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 130 }}>
+          {mArr.map(([k, v]) => (
+            <div key={k} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}>
+              <div style={{ flex: 1, display: "flex", gap: 1, alignItems: "flex-end", width: "100%" }}>
+                <div style={{ flex: 1, background: "#22c55e", borderRadius: "2px 2px 0 0", minHeight: 1, height: `${(v.income / maxM) * 100}%`, transition: "height .4s" }} />
+                <div style={{ flex: 1, background: "#ef4444", borderRadius: "2px 2px 0 0", minHeight: 1, height: `${(v.expense / maxM) * 100}%`, transition: "height .4s" }} />
+              </div>
+              <span style={{ fontSize: 9, color: "#64748b", marginTop: 4 }}>{mn(+k.slice(5))}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 16, marginTop: 10, justifyContent: "center" }}>
+          {[["#22c55e", "Income"], ["#ef4444", "Expenses"]].map(([c, l]) => (
+            <span key={l} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: c }} />{l}
+            </span>
+          ))}
+        </div>
       </Card>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <Card><div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 10 }}>Unpaid Invoices</div>{unpaid.length === 0 ? <p style={{ color: "#64748b", fontSize: 13 }}>All caught up!</p> : unpaid.slice(0, 4).map((i) => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)", fontSize: 13 }}><span style={{ color: "#d1d5db" }}>{i.clientName || "Client"}</span><span style={{ color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(i.amount)}</span></div>)}</Card>
-        <Card><div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 10 }}>Goals</div>{bGoals.length === 0 ? <p style={{ color: "#64748b", fontSize: 13 }}>No goals set.</p> : bGoals.slice(0, 3).map((g) => { const cur = g.metric === "revenue" ? totInc : net; return <div key={g.id} style={{ marginBottom: 10 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}><span style={{ color: "#d1d5db" }}>{g.name}</span><span style={{ color: bc, fontWeight: 600 }}>{Math.round((cur / (g.target||1)) * 100)}%</span></div><PBar value={cur} max={g.target} color={bc} /></div>; })}</Card>
+
+      {/* Bottom grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16 }}>
+        {/* Expense donut + top list */}
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 14 }}>Expenses by Schedule C Line</div>
+          {donutSlices.length === 0
+            ? <p style={{ color: "#64748b", fontSize: 13 }}>No expenses recorded yet.</p>
+            : <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+                <div style={{ flexShrink: 0 }}>
+                  <DonutChart slices={donutSlices} size={150} thickness={30} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {topCats.map(({ code, label, value, color }) => (
+                    <div key={code} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: "#d1d5db", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Ln {SCHEDULE_C.find(c => c.code === code)?.line}: {label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color, flexShrink: 0 }}>{$(value)}</span>
+                    </div>
+                  ))}
+                  {donutSlices.length > 8 && <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>+{donutSlices.length - 8} more categories</div>}
+                </div>
+              </div>
+          }
+        </Card>
+
+        {/* Right column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card style={{ background: "rgba(245,158,11,.06)", borderColor: "rgba(245,158,11,.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Mileage</div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: "#f1f5f9" }}>{totalMiles.toFixed(1)} mi</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{$(mileDed)} deduction · ${MILE_RATE}/mi</div>
+              </div>
+              <I name="car" size={28} />
+            </div>
+          </Card>
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 10 }}>Unpaid Invoices</div>
+            {unpaid.length === 0
+              ? <p style={{ color: "#64748b", fontSize: 13 }}>All caught up!</p>
+              : unpaid.slice(0, 4).map((i) => (
+                  <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.03)", fontSize: 13 }}>
+                    <span style={{ color: "#d1d5db" }}>{i.clientName || "Client"}</span>
+                    <span style={{ color: "#f59e0b", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace" }}>{$(i.amount)}</span>
+                  </div>
+                ))
+            }
+          </Card>
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 10 }}>Goals</div>
+            {bGoals.length === 0
+              ? <p style={{ color: "#64748b", fontSize: 13 }}>No goals set.</p>
+              : bGoals.slice(0, 3).map((g) => {
+                  const cur = g.metric === "revenue" ? totInc : net;
+                  return (
+                    <div key={g.id} style={{ marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                        <span style={{ color: "#d1d5db" }}>{g.name}</span>
+                        <span style={{ color: bc, fontWeight: 600 }}>{Math.round((cur / (g.target || 1)) * 100)}%</span>
+                      </div>
+                      <PBar value={cur} max={g.target} color={bc} />
+                    </div>
+                  );
+                })
+            }
+          </Card>
+        </div>
       </div>
     </div>
-  </div>;
+  );
 }
 
 // ─── SETTINGS MODAL ──────────────────────────────────────────────────────────
