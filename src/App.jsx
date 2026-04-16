@@ -207,6 +207,7 @@ function App() {
   const [searchQ, setSearchQ] = useState("");
   const [bizMenuOpen, setBizMenuOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);       // { version, downloaded, percent }
+  const [installing, setInstalling] = useState(false);      // true while waiting for app to restart
   const [showSettings, setShowSettings] = useState(false);
   const [checkStatus, setCheckStatus] = useState("idle"); // idle | checking | up-to-date | error
   const [appVersion, setAppVersion] = useState("");
@@ -342,7 +343,7 @@ function App() {
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0f0f1a,#1a1a2e 50%,#16213e)", color: "#e2e8f0", minHeight: "100vh", fontSize: 14 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#1a1a2e}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7)}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
       {/* HEADER */}
       <header style={{ background: "rgba(15,15,26,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "10px 20px", position: "sticky", top: 0, zIndex: 100 }}>
@@ -387,7 +388,7 @@ function App() {
       {updateInfo && <div style={{ background: "linear-gradient(90deg,#1e3a5f,#1a3050)", borderBottom: "1px solid #2a5580", padding: "8px 20px", display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
         <span>🔄</span>
         {(updateInfo.downloaded || updateInfo.percent >= 99)
-          ? <><span>Version <strong>{updateInfo.version}</strong> ready to install</span><button type="button" onClick={() => window.electronAPI?.installUpdate()} style={{ background: "#3b82f6", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>Restart &amp; Install</button></>
+          ? <><span>Version <strong>{updateInfo.version}</strong> ready to install</span>{installing ? <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 12, color: "#93c5fd" }}>Preparing to restart…</span><div style={{ width: 80, height: 4, background: "#0f2040", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: "100%", background: "linear-gradient(90deg,#3b82f6 0%,#93c5fd 50%,#3b82f6 100%)", backgroundSize: "200% 100%", animation: "shimmer 1.2s linear infinite", borderRadius: 2 }} /></div></div> : <button type="button" onClick={() => { setInstalling(true); window.electronAPI?.installUpdate(); }} style={{ background: "#3b82f6", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>Restart &amp; Install</button>}</>
           : <><span>Version <strong>{updateInfo.version}</strong> downloading… {updateInfo.percent > 0 && `${updateInfo.percent}%`}</span><div style={{ flex: 1, maxWidth: 120, height: 4, background: "#0f2040", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${updateInfo.percent}%`, background: "#3b82f6", transition: "width .3s" }} /></div></>
         }
         <button onClick={() => setUpdateInfo(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
@@ -430,7 +431,8 @@ function App() {
             setCheckStatus("checking");
             window.electronAPI.checkForUpdate();
           }}
-          onInstall={() => window.electronAPI?.installUpdate()}
+          installing={installing}
+          onInstall={() => { setInstalling(true); window.electronAPI?.installUpdate(); }}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -565,7 +567,7 @@ function Dash({ bizOnly, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInv
 }
 
 // ─── SETTINGS MODAL ──────────────────────────────────────────────────────────
-function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, onInstall, onClose }) {
+function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, onInstall, installing, onClose }) {
   const row = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid rgba(255,255,255,.06)" };
   const sectionLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, marginTop: 18 };
 
@@ -575,7 +577,15 @@ function SettingsModal({ appVersion, updateInfo, checkStatus, onCheckForUpdate, 
     updateNode = (
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 13, color: "#4ade80" }}>v{updateInfo.version} ready to install</span>
-        <button type="button" onClick={onInstall} style={{ padding: "5px 14px", background: "#22c55e", border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Restart &amp; Install</button>
+        {installing
+          ? <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 13, color: "#86efac" }}>Preparing to restart…</span>
+              <div style={{ width: 100, height: 5, background: "#1e293b", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: "100%", background: "linear-gradient(90deg,#22c55e 0%,#86efac 50%,#22c55e 100%)", backgroundSize: "200% 100%", animation: "shimmer 1.2s linear infinite", borderRadius: 3 }} />
+              </div>
+            </div>
+          : <button type="button" onClick={onInstall} style={{ padding: "5px 14px", background: "#22c55e", border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Restart &amp; Install</button>
+        }
       </div>
     );
   } else if (updateInfo && !updateInfo.downloaded) {
