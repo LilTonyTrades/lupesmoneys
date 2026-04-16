@@ -335,7 +335,12 @@ function App() {
   const close = () => setModal(null);
 
   if (!loading && businesses.length === 0) {
-    return <Onboarding onDone={async (name, ein, type) => { await put("businesses", { id: uid(), name, ein, type, color: "#3b82f6", created: td() }); reload(); }} />;
+    return <Onboarding onDone={async (data) => {
+      const newBizId = uid();
+      await put("businesses", { id: newBizId, name: data.name, ein: data.ein, type: data.bizType, color: data.color, trackMileage: data.trackMileage, created: td() });
+      if (data.goalAmount) await put("goals", { id: uid(), bizId: newBizId, year: new Date().getFullYear(), type: "income", target: data.goalAmount });
+      reload();
+    }} />;
   }
   if (!loading && !bizId && businesses.length > 0) { setBizId(businesses[0].id); return null; }
 
@@ -469,25 +474,196 @@ const _AppWithBoundary = () => <ErrorBoundary><App /></ErrorBoundary>;
 export { _AppWithBoundary as default };
 
 // ─── ONBOARDING ──────────────────────────────────────────────────────────────
+// ─── ONBOARDING WIZARD ───────────────────────────────────────────────────────
+const BIZ_TYPES = [
+  { id: "freelance",   icon: "laptop",   label: "Freelancer",       sub: "Design, writing, dev, consulting" },
+  { id: "driver",      icon: "car",      label: "Driver / Delivery", sub: "Rideshare, delivery, courier" },
+  { id: "creator",     icon: "video",    label: "Content Creator",   sub: "YouTube, social media, podcasting" },
+  { id: "retail",      icon: "shopping", label: "Retail / Resale",   sub: "E-commerce, dropshipping, thrifting" },
+  { id: "trades",      icon: "tool",     label: "Tradesperson",      sub: "Contractor, electrician, plumber" },
+  { id: "consultant",  icon: "briefcase",label: "Consultant",        sub: "Business, finance, HR, marketing" },
+  { id: "other",       icon: "building", label: "Other",             sub: "Whatever fits your hustle" },
+];
+const BIZ_CAT_SUGGESTIONS = {
+  freelance:  ["L11","L18","L22","L08"],
+  driver:     ["L09","L08","L10","L14"],
+  creator:    ["L01","L22","L08","L18"],
+  retail:     ["L04","L01","L17","L22"],
+  trades:     ["L09","L10","L14","L08"],
+  consultant: ["L12","L14","L08","L11"],
+  other:      ["L01","L08","L18","L22"],
+};
+const WIZARD_COLORS = ["#3b82f6","#8b5cf6","#22c55e","#ef4444","#f59e0b","#06b6d4","#ec4899","#f97316"];
+const TOTAL_STEPS = 5;
+
+function WizStep({ n, label, active, done }) {
+  return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div style={{ width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: done ? "#22c55e" : active ? "#3b82f6" : "rgba(255,255,255,.08)", color: done || active ? "#fff" : "#475569", transition: "all .3s", border: done ? "2px solid #22c55e" : active ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,.1)" }}>
+      {done ? "\u2713" : n}
+    </div>
+    <span style={{ fontSize: 9, color: active ? "#93c5fd" : done ? "#86efac" : "#475569", textTransform: "uppercase", letterSpacing: .8, fontWeight: 600 }}>{label}</span>
+  </div>;
+}
+
 function Onboarding({ onDone }) {
-  const [name, setName] = useState("");
-  const [ein, setEin] = useState("");
-  const [type, setType] = useState("Sole Proprietorship");
-  return <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0f0f1a,#1a1a2e 50%,#16213e)", color: "#e2e8f0", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-    <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}`}</style>
-    <Card style={{ maxWidth: 460, width: "100%", padding: 32 }}>
-      <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ width: 56, height: 56, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", marginBottom: 12 }}><I name="building" size={28} /></div>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#f9fafb", marginBottom: 4 }}>Welcome to OpenClaw Books</h2>
-        <p style={{ color: "#94a3b8", fontSize: 14 }}>Set up your first business to get started.</p>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="Business Name"><input placeholder="e.g. OpenClaw LLC" value={name} onChange={(e) => setName(e.target.value)} style={inp} /></Field>
-        <Field label="EIN (optional)"><input placeholder="XX-XXXXXXX" value={ein} onChange={(e) => setEin(e.target.value)} style={inp} /></Field>
-        <Field label="Business Type"><select value={type} onChange={(e) => setType(e.target.value)} style={inp}>{["Sole Proprietorship", "Single-Member LLC", "Freelance / Independent Contractor", "Side Hustle / Gig Work", "Other"].map((t) => <option key={t}>{t}</option>)}</select></Field>
-      </div>
-      <Btn onClick={() => { if (name.trim()) onDone(name.trim(), ein, type); }} s={{ width: "100%", justifyContent: "center", marginTop: 20, padding: "12px 24px" }} disabled={!name.trim()}><I name="check" size={16} /> Create Business & Start</Btn>
-    </Card>
+  const [step, setStep] = useState(0);
+  const [bizName, setBizName]       = useState("");
+  const [bizType, setBizType]       = useState("");
+  const [trackMileage, setMileage]  = useState(null);
+  const [selCats, setSelCats]       = useState([]);
+  const [goalAmt, setGoalAmt]       = useState("");
+  const [color, setColor]           = useState(WIZARD_COLORS[0]);
+  const [ein, setEin]               = useState("");
+
+  const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+  const back = () => setStep((s) => Math.max(s - 1, 0));
+
+  const sugCats = BIZ_CAT_SUGGESTIONS[bizType] || [];
+  const toggleCat = (code) => setSelCats((prev) => prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]);
+
+  const handleTypeSelect = (id) => {
+    setBizType(id);
+    setSelCats(BIZ_CAT_SUGGESTIONS[id] || []);
+  };
+
+  const finish = () => {
+    if (!bizName.trim()) return;
+    onDone({ name: bizName.trim(), bizType, ein, color, trackMileage: trackMileage === true, goalAmount: parseFloat(goalAmt) || 0, pinnedCats: selCats });
+  };
+
+  const stepLabels = ["Business","Type","Mileage","Goals","Finish"];
+
+  return <div style={{ fontFamily: "'DM Sans',sans-serif", background: "linear-gradient(145deg,#0a0a14,#0f0f1a 40%,#0d1117)", color: "#e2e8f0", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}input:focus,select:focus{outline:2px solid #3b82f6;outline-offset:1px}`}</style>
+
+    {/* Step indicator */}
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 32 }}>
+      {stepLabels.map((l, i) => <React.Fragment key={i}>
+        <WizStep n={i + 1} label={l} active={step === i} done={step > i} />
+        {i < stepLabels.length - 1 && <div style={{ width: 36, height: 2, background: step > i ? "#22c55e44" : "rgba(255,255,255,.06)", margin: "0 6px", marginBottom: 18, transition: "all .3s" }} />}
+      </React.Fragment>)}
+    </div>
+
+    <div style={{ maxWidth: 520, width: "100%", animation: "fadeSlide .25s ease" }}>
+      <style>{`@keyframes fadeSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* ── STEP 0: Business name ────────────────────── */}
+      {step === 0 && <Card style={{ padding: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", marginBottom: 14, fontSize: 28, boxShadow: "0 8px 24px rgba(59,130,246,.35)" }}>
+            <I name="zap" size={30} />
+          </div>
+          <h2 style={{ fontSize: 24, fontWeight: 700, color: "#f9fafb", marginBottom: 6 }}>Welcome to OpenClaw Books</h2>
+          <p style={{ color: "#64748b", fontSize: 14 }}>Free, private bookkeeping for self-employed people. Let&apos;s get you set up in 60 seconds.</p>
+        </div>
+        <Field label="What do you call your business?">
+          <input autoFocus placeholder="e.g. LupesEmpire, Freelance by Tony..." value={bizName} onChange={(e) => setBizName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && bizName.trim() && next()} style={{ ...inp, fontSize: 15 }} />
+        </Field>
+        <Btn onClick={next} disabled={!bizName.trim()} s={{ width: "100%", justifyContent: "center", marginTop: 20, padding: "13px 0", fontSize: 15 }}>
+          Continue <I name="arrow-right" size={16} />
+        </Btn>
+        <p style={{ textAlign: "center", fontSize: 11, color: "#334155", marginTop: 12 }}>All data stays on your device. No account required.</p>
+      </Card>}
+
+      {/* ── STEP 1: Business type ────────────────────── */}
+      {step === 1 && <div>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb", marginBottom: 4 }}>What best describes your work?</h2>
+          <p style={{ color: "#64748b", fontSize: 13 }}>We&apos;ll pre-select your most relevant IRS expense categories.</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+          {BIZ_TYPES.map((bt) => <button key={bt.id} onClick={() => handleTypeSelect(bt.id)} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "14px 16px", borderRadius: 12, border: bizType === bt.id ? "2px solid #3b82f6" : "1px solid rgba(255,255,255,.07)", background: bizType === bt.id ? "rgba(59,130,246,.12)" : "rgba(255,255,255,.02)", cursor: "pointer", textAlign: "left", transition: "all .15s", gap: 4 }}>
+            <span style={{ fontSize: 18, marginBottom: 2 }}><I name={bt.icon} size={18} color={bizType === bt.id ? "#60a5fa" : "#475569"} /></span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: bizType === bt.id ? "#93c5fd" : "#d1d5db", fontFamily: "'DM Sans',sans-serif" }}>{bt.label}</span>
+            <span style={{ fontSize: 11, color: "#475569" }}>{bt.sub}</span>
+          </button>)}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn v="ghost" onClick={back} s={{ flex: 1, justifyContent: "center" }}><I name="arrow-left" size={15} /> Back</Btn>
+          <Btn onClick={next} disabled={!bizType} s={{ flex: 2, justifyContent: "center", padding: "12px 0" }}>Continue <I name="arrow-right" size={15} /></Btn>
+        </div>
+      </div>}
+
+      {/* ── STEP 2: Mileage ─────────────────────────── */}
+      {step === 2 && <div>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>🚗</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb", marginBottom: 6 }}>Do you drive for work?</h2>
+          <p style={{ color: "#64748b", fontSize: 13 }}>We&apos;ll activate the mileage tracker and calculate your IRS deduction ({MILE_RATE * 100}¢/mile for {new Date().getFullYear()}).</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+          {[{ val: true, icon: "car", label: "Yes, I drive for work", sub: "Track trips + auto-deduction", col: "#22c55e" }, { val: false, icon: "x", label: "No driving for work", sub: "Skip mileage tracking", col: "#ef4444" }].map((opt) => <button key={String(opt.val)} onClick={() => setMileage(opt.val)} style={{ padding: "20px 16px", borderRadius: 14, border: trackMileage === opt.val ? `2px solid ${opt.col}` : "1px solid rgba(255,255,255,.07)", background: trackMileage === opt.val ? `${opt.col}15` : "rgba(255,255,255,.02)", cursor: "pointer", transition: "all .15s" }}>
+            <div style={{ fontSize: 22, marginBottom: 8, color: trackMileage === opt.val ? opt.col : "#475569" }}><I name={opt.icon} size={24} color={trackMileage === opt.val ? opt.col : "#475569"} /></div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: trackMileage === opt.val ? opt.col : "#d1d5db", fontFamily: "'DM Sans',sans-serif", marginBottom: 4 }}>{opt.label}</div>
+            <div style={{ fontSize: 11, color: "#475569" }}>{opt.sub}</div>
+          </button>)}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn v="ghost" onClick={back} s={{ flex: 1, justifyContent: "center" }}><I name="arrow-left" size={15} /> Back</Btn>
+          <Btn onClick={next} disabled={trackMileage === null} s={{ flex: 2, justifyContent: "center", padding: "12px 0" }}>Continue <I name="arrow-right" size={15} /></Btn>
+        </div>
+      </div>}
+
+      {/* ── STEP 3: Income goal ─────────────────────── */}
+      {step === 3 && <Card style={{ padding: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🎯</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb", marginBottom: 6 }}>Set a revenue target?</h2>
+          <p style={{ color: "#64748b", fontSize: 13 }}>Optional — your dashboard will show progress toward this number all year.</p>
+        </div>
+        <div style={{ position: "relative", marginBottom: 8 }}>
+          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "#64748b", fontSize: 18, fontWeight: 600, pointerEvents: "none" }}>$</span>
+          <input type="number" min="0" placeholder="50000" value={goalAmt} onChange={(e) => setGoalAmt(e.target.value)} style={{ ...inp, paddingLeft: 26, fontSize: 18, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          {[25000,50000,75000,100000].map((v) => <button key={v} onClick={() => setGoalAmt(String(v))} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)", background: goalAmt === String(v) ? "rgba(59,130,246,.15)" : "rgba(255,255,255,.02)", color: goalAmt === String(v) ? "#93c5fd" : "#64748b", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans',sans-serif" }}>${(v/1000).toFixed(0)}k</button>)}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <Btn v="ghost" onClick={back} s={{ flex: 1, justifyContent: "center" }}><I name="arrow-left" size={15} /> Back</Btn>
+          <Btn v="ghost" onClick={() => { setGoalAmt(""); next(); }} s={{ flex: 1, justifyContent: "center" }}>Skip</Btn>
+          <Btn onClick={next} s={{ flex: 2, justifyContent: "center" }}>Continue <I name="arrow-right" size={15} /></Btn>
+        </div>
+      </Card>}
+
+      {/* ── STEP 4: Color + EIN + Launch ────────────── */}
+      {step === 4 && <Card style={{ padding: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>✨</div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb", marginBottom: 6 }}>Almost there!</h2>
+          <p style={{ color: "#64748b", fontSize: 13 }}>Pick a color for <strong style={{ color: "#f1f5f9" }}>{bizName}</strong> and optionally add your EIN.</p>
+        </div>
+        <Field label="Brand Color">
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+            {WIZARD_COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 36, height: 36, borderRadius: 10, background: c, border: color === c ? "3px solid #fff" : "3px solid transparent", cursor: "pointer", boxShadow: color === c ? `0 0 12px ${c}66` : "none", transition: "all .15s" }} />)}
+          </div>
+        </Field>
+        <div style={{ marginTop: 16 }}>
+          <Field label="EIN (optional — for contractors / 1099s)">
+            <input placeholder="XX-XXXXXXX" value={ein} onChange={(e) => setEin(e.target.value)} style={inp} />
+          </Field>
+        </div>
+        <div style={{ marginTop: 20, padding: 14, borderRadius: 10, background: `${color}0d`, border: `1px solid ${color}33` }}>
+          <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#94a3b8" }}>
+            <span style={{ minWidth: 80, color: "#64748b" }}>Business</span><span style={{ color: "#f1f5f9", fontWeight: 500 }}>{bizName}</span>
+          </div>
+          <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+            <span style={{ minWidth: 80, color: "#64748b" }}>Type</span><span style={{ color: "#f1f5f9" }}>{BIZ_TYPES.find((b) => b.id === bizType)?.label || bizType}</span>
+          </div>
+          <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+            <span style={{ minWidth: 80, color: "#64748b" }}>Mileage</span><span style={{ color: trackMileage ? "#22c55e" : "#64748b" }}>{trackMileage ? "Tracking on" : "Off"}</span>
+          </div>
+          {goalAmt && <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+            <span style={{ minWidth: 80, color: "#64748b" }}>Goal</span><span style={{ color: "#f59e0b", fontFamily: "'JetBrains Mono',monospace" }}>${parseFloat(goalAmt).toLocaleString()}</span>
+          </div>}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          <Btn v="ghost" onClick={back} s={{ flex: 1, justifyContent: "center" }}><I name="arrow-left" size={15} /> Back</Btn>
+          <Btn v="green" onClick={finish} s={{ flex: 2, justifyContent: "center", padding: "14px 0", fontSize: 15 }}>
+            <I name="zap" size={16} /> Launch OpenClaw Books
+          </Btn>
+        </div>
+      </Card>}
+    </div>
   </div>;
 }
 
