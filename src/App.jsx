@@ -423,10 +423,10 @@ function App() {
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 20px 80px" }}>
         {loading ? <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div style={{ width: 32, height: 32, border: `3px solid #334155`, borderTopColor: bc, borderRadius: "50%", animation: "spin .8s linear infinite" }} /></div>
         : view === "dashboard" ? <Dash {...{ bizOnly, yTxns, totInc, totExp, net, mileDed, seTax, qEst, yMiles, yInvs, year, bGoals, bc, setView }} />
-        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
-        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
-        : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} onImport={() => setModal({ t: "mile-import" })} bc={bc} />
-        : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
+        : view === "income" ? <TxnList type="income" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "income", prefill: {} } })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "income", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onBatchDelete={async (ids) => { for (const id of ids) await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
+        : view === "expenses" ? <TxnList type="expense" txns={yTxns} searchQ={searchQ} onAdd={() => setModal({ t: "txn", d: { type: "expense", prefill: {} } })} onBatchScan={() => setModal({ t: "batch-scan" })} onImportCSV={() => setModal({ t: "csv-import" })} onEdit={(t) => setModal({ t: "txn", d: { type: "expense", prefill: t, editId: t.id } })} onDelete={async (id) => { await del("transactions", id); reload(); }} onBatchDelete={async (ids) => { for (const id of ids) await del("transactions", id); reload(); }} onQuickSave={async (t) => { await put("transactions", t); reload(); }} onOpenRules={() => setModal({ t: "rules" })} rules={rules} bc={bc} />
+        : view === "mileage" ? <MileV trips={yMiles} rate={MILE_RATE} onAdd={() => setModal({ t: "mile", d: {} })} onEdit={(m) => setModal({ t: "mile", d: { ...m, editId: m.id } })} onDelete={async (id) => { await del("mileage", id); reload(); }} onBatchDelete={async (ids) => { for (const id of ids) await del("mileage", id); reload(); }} onImport={() => setModal({ t: "mile-import" })} bc={bc} />
+        : view === "invoices" ? <InvV invoices={yInvs} biz={biz} onAdd={() => { const maxSeq = bInvs.reduce((mx, inv) => { const m = inv.invoiceNumber?.match(/(\d+)$/); return m ? Math.max(mx, parseInt(m[1])) : mx; }, 0); const nextNum = `INV-${year}-${String(maxSeq + 1).padStart(3, "0")}`; setModal({ t: "inv", d: { invoiceNumber: nextNum } }); }} onEdit={(i) => setModal({ t: "inv", d: { ...i, editId: i.id } })} onDelete={async (id) => { await del("invoices", id); reload(); }} onBatchDelete={async (ids) => { for (const id of ids) await del("invoices", id); reload(); }} onPreview={(i) => setModal({ t: "inv-preview", d: { invoice: i, biz } })} reload={reload} bc={bc} />
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
         : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} biz={biz} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
@@ -1181,16 +1181,31 @@ function RulesModal({ bizId, rules, txns, onSave, onDelete, onApply, onClose }) 
 }
 
 // ─── TXN LIST ────────────────────────────────────────────────────────────────
-function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit, onDelete, onQuickSave, onOpenRules, rules, bc }) {
+function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit, onDelete, onBatchDelete, onQuickSave, onOpenRules, rules, bc }) {
   const [scope, setScope] = useState("all");
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
+  const [catFilter, setCatFilter] = useState("all");
+  const [selected, setSelected] = useState(new Set());
+  const [confirmBatch, setConfirmBatch] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [pickerState, setPickerState] = useState(null); // { txn, rect }
   const cats = type === "income" ? INC_CATS : SCHEDULE_C;
+  const toggleSort = (key) => { if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc"); else { setSortKey(key); setSortDir("desc"); } };
+  const arrow = (key) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  const toggleRow = (id) => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
+  const toggleAll = () => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); const allOn = f.length > 0 && f.every(t => n.has(t.id)); allOn ? f.forEach(t => n.delete(t.id)) : f.forEach(t => n.add(t.id)); return n; }); };
   let f = txns.filter((t) => t.type === type);
   if (scope === "business") f = f.filter((t) => t.scope !== "personal");
   if (scope === "personal") f = f.filter((t) => t.scope === "personal");
+  if (catFilter !== "all") f = f.filter((t) => t.category === catFilter);
   if (searchQ) { const q = searchQ.toLowerCase(); f = f.filter((t) => (t.description || "").toLowerCase().includes(q) || (t.vendor || "").toLowerCase().includes(q)); }
+  f = [...f].sort((a, b) => {
+    const av = sortKey === "date" ? (a.date || "") : sortKey === "amount" ? (a.amount || 0) : (a.vendor || a.description || "").toLowerCase();
+    const bv = sortKey === "date" ? (b.date || "") : sortKey === "amount" ? (b.amount || 0) : (b.vendor || b.description || "").toLowerCase();
+    return av < bv ? (sortDir === "asc" ? -1 : 1) : av > bv ? (sortDir === "asc" ? 1 : -1) : 0;
+  });
   const total = sumAmt(f, (t) => t.amount);
   const uncatCount = type === "expense" ? f.filter((t) => !SCHEDULE_C.find((c) => c.code === t.category)).length : 0;
   return <><div>
@@ -1202,6 +1217,10 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit,
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ ...inp, width: 110, fontSize: 12, background: "#111827" }}><option value="all">All</option><option value="business">Business</option><option value="personal">Personal</option></select>
+        <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} style={{ ...inp, width: 160, fontSize: 12, background: "#111827" }}><option value="all">All Categories</option>{cats.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}</select>
+        {(() => { const sel = f.filter(t => selected.has(t.id)); return sel.length > 0 && (confirmBatch
+          ? <><Btn v="danger" onClick={async () => { await onBatchDelete(sel.map(t => t.id)); setSelected(new Set()); setConfirmBatch(false); }}>⚠ Confirm ({sel.length})</Btn><Btn v="ghost" onClick={() => setConfirmBatch(false)}>Cancel</Btn></>
+          : <Btn v="danger" onClick={() => setConfirmBatch(true)}><I name="trash" size={14} /> Delete ({sel.length})</Btn>); })()}
         {type === "expense" && <Btn v="ghost" onClick={onOpenRules} title="Manage auto-categorization rules"><I name="tag" size={15} /> Rules</Btn>}
         {type === "expense" && (
           FEATURES.BATCH_SCAN
@@ -1212,7 +1231,24 @@ function TxnList({ type, txns, searchQ, onAdd, onBatchScan, onImportCSV, onEdit,
         <Btn onClick={onAdd}><I name="plus" size={15} /> Add</Btn>
       </div>
     </div>
-    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Description", "Category", "Scope", "Amount", "\uD83D\uDCCE", ""].map((h, i) => <th key={i} style={{ textAlign: i === 4 ? "right" : i >= 5 ? "center" : "left", padding: "9px 12px", fontSize: i === 5 ? 14 : 10, fontWeight: 600, color: "#64748b", textTransform: i === 5 ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 36 : i === 6 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); const isUncat = type === "expense" && !t.category; return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isUncat ? "3px solid #f59e0b" : "3px solid transparent", background: isUncat ? "rgba(245,158,11,.04)" : undefined }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{t.description || "—"}{t.recurring?.freq && <span title={`Repeats ${t.recurring.freq}`} style={{ fontSize: 10, background: "rgba(99,102,241,.2)", color: "#a5b4fc", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>{"\uD83D\uDD01"} {t.recurring.freq}</span>}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <span title="Click to change category" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color={type === "expense" ? (CAT_COLORS[t.category] || bc) : "#22c55e"}>Ln {cat.line}: {cat.label}</Badge></span> : <span title="Click to categorize" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color="#f59e0b">+ Categorize</Badge></span>}</td><td style={{ padding: "10px 12px" }}><span title="Click to toggle business/personal" style={{ cursor: "pointer" }} onClick={() => onQuickSave({ ...t, scope: t.scope === "personal" ? "business" : "personal" })}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></span></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "\u2212"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>{"\uD83D\uDCCE"}</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => setConfirmDeleteId(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
+    {f.length === 0 ? <Empty icon={type === "income" ? "dollar" : "receipt"} text={`No ${type} recorded.`} /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>
+  <th style={{ padding: "9px 12px", width: 36, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
+    <input type="checkbox" checked={f.length > 0 && f.every(t => selected.has(t.id))} onChange={toggleAll} style={{ cursor: "pointer", accentColor: "#3b82f6" }} />
+  </th>
+  {[
+    { label: "Date",        key: "date",   align: "left"  },
+    { label: "Description", key: "vendor", align: "left"  },
+    { label: "Category",    key: null,     align: "left"  },
+    { label: "Scope",       key: null,     align: "left"  },
+    { label: "Amount",      key: "amount", align: "right" },
+    { label: "📎",          key: null,     align: "center", w: 36,  noUpper: true },
+    { label: "",            key: null,     align: "center", w: 70  },
+  ].map(({ label, key, align, w, noUpper }) => (
+    <th key={label} onClick={key ? () => toggleSort(key) : undefined} style={{ textAlign: align, padding: "9px 12px", fontSize: noUpper ? 14 : 10, fontWeight: 600, color: key && sortKey === key ? "#f1f5f9" : "#64748b", textTransform: noUpper ? "none" : "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: w, cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+      {label}{key ? arrow(key) : ""}
+    </th>
+  ))}
+</tr></thead><tbody>{f.map((t) => { const cat = cats.find((c) => c.code === t.category); const isUncat = type === "expense" && !t.category; const isSel = selected.has(t.id); return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isSel ? "3px solid #3b82f6" : isUncat ? "3px solid #f59e0b" : "3px solid transparent", background: isSel ? "rgba(59,130,246,.08)" : isUncat ? "rgba(245,158,11,.04)" : undefined }}><td style={{ padding: "10px 12px", textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleRow(t.id)} style={{ cursor: "pointer", accentColor: "#3b82f6" }} /></td><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}><div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{t.description || "—"}{t.recurring?.freq && <span title={`Repeats ${t.recurring.freq}`} style={{ fontSize: 10, background: "rgba(99,102,241,.2)", color: "#a5b4fc", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>{"\uD83D\uDD01"} {t.recurring.freq}</span>}</div>{t.vendor && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.vendor}</div>}</td><td style={{ padding: "10px 12px" }}>{cat ? <span title="Click to change category" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color={type === "expense" ? (CAT_COLORS[t.category] || bc) : "#22c55e"}>Ln {cat.line}: {cat.label}</Badge></span> : <span title="Click to categorize" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); setPickerState({ txn: t, rect: e.currentTarget.getBoundingClientRect() }); }}><Badge color="#f59e0b">+ Categorize</Badge></span>}</td><td style={{ padding: "10px 12px" }}><span title="Click to toggle business/personal" style={{ cursor: "pointer" }} onClick={() => onQuickSave({ ...t, scope: t.scope === "personal" ? "business" : "personal" })}><Badge color={t.scope === "personal" ? "#f59e0b" : "#22c55e"}>{t.scope || "biz"}</Badge></span></td><td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: type === "income" ? "#22c55e" : "#ef4444" }}>{type === "income" ? "+" : "\u2212"}{$(t.amount)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}>{t.receiptFile ? <button title="View receipt" onClick={() => setViewingReceipt(t.receiptFile)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 16, padding: 2 }}>{"\uD83D\uDCCE"}</button> : null}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => setConfirmDeleteId(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
   </div>
   {pickerState && <CategoryPicker cats={cats} anchorRect={pickerState.rect} onSelect={(cat) => { onQuickSave({ ...pickerState.txn, category: cat.code }); setPickerState(null); }} onClose={() => setPickerState(null)} />}
   {viewingReceipt && <ReceiptViewer receipt={viewingReceipt} onClose={() => setViewingReceipt(null)} />}
@@ -1348,19 +1384,74 @@ function MobileImportModal({ bizId, existingTrips, onImport, onClose }) {
 }
 
 // ─── MILEAGE ──────────────────────────────────────────────────────────────────
-function MileV({ trips, rate, onAdd, onEdit, onDelete, onImport }) {
-  const tm = trips.reduce((s, t) => s + t.miles, 0);
+function MileV({ trips, rate, onAdd, onEdit, onDelete, onBatchDelete, onImport }) {
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
+  const [purposeQ, setPurposeQ] = useState("");
+  const [selected, setSelected] = useState(new Set());
+  const [confirmBatch, setConfirmBatch] = useState(false);
+  const toggleSort = (key) => { if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc"); else { setSortKey(key); setSortDir("desc"); } };
+  const arrow = (key) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  const toggleRow = (id) => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
+  const toggleAll = () => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); const allOn = visible.length > 0 && visible.every(t => n.has(t.id)); allOn ? visible.forEach(t => n.delete(t.id)) : visible.forEach(t => n.add(t.id)); return n; }); };
+  let visible = purposeQ ? trips.filter(t => (t.purpose || "").toLowerCase().includes(purposeQ.toLowerCase()) || (t.from || "").toLowerCase().includes(purposeQ.toLowerCase()) || (t.to || "").toLowerCase().includes(purposeQ.toLowerCase())) : trips;
+  visible = [...visible].sort((a, b) => {
+    const av = sortKey === "miles" ? (a.miles || 0) : (a.date || "");
+    const bv = sortKey === "miles" ? (b.miles || 0) : (b.date || "");
+    return av < bv ? (sortDir === "asc" ? -1 : 1) : av > bv ? (sortDir === "asc" ? 1 : -1) : 0;
+  });
+  const tm = visible.reduce((s, t) => s + t.miles, 0);
   return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Mileage</h3><div style={{ display: "flex", gap: 8 }}><Btn v="ghost" onClick={onImport}><I name="smartphone" size={15} /> Import from Mobile</Btn><Btn onClick={onAdd}><I name="plus" size={15} /> Log Trip</Btn></div></div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}><Stat label="Miles" value={`${tm.toFixed(1)}`} color="#f59e0b" icon="car" /><Stat label="Rate" value={`$${rate}/mi`} color="#94a3b8" icon="tag" /><Stat label="Deduction" value={$(tm * rate)} color="#22c55e" icon="dollar" /></div>
-    {trips.length === 0 ? <Empty icon="car" text="No trips." /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Purpose", "Route", "Miles", "Ded.", ""].map((h, i) => <th key={i} style={{ textAlign: i >= 3 ? (i === 5 ? "center" : "right") : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 5 ? 70 : undefined }}>{h}</th>)}</tr></thead><tbody>{trips.map((t) => <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.purpose || "—"}</td><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{t.from || "?"} → {t.to || "?"}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b" }}>{t.miles.toFixed(1)}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#22c55e" }}>{$(t.miles * rate)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>)}</tbody></table></Card>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Mileage</h3>
+        <input value={purposeQ} onChange={e => setPurposeQ(e.target.value)} placeholder="Filter by purpose / route…" style={{ ...inp, width: 220, fontSize: 12, background: "#111827" }} />
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {(() => { const sel = visible.filter(t => selected.has(t.id)); return sel.length > 0 && (confirmBatch
+          ? <><Btn v="danger" onClick={async () => { await onBatchDelete(sel.map(t => t.id)); setSelected(new Set()); setConfirmBatch(false); }}>⚠ Confirm ({sel.length})</Btn><Btn v="ghost" onClick={() => setConfirmBatch(false)}>Cancel</Btn></>
+          : <Btn v="danger" onClick={() => setConfirmBatch(true)}><I name="trash" size={14} /> Delete ({sel.length})</Btn>); })()}
+        <Btn v="ghost" onClick={onImport}><I name="smartphone" size={15} /> Import from Mobile</Btn><Btn onClick={onAdd}><I name="plus" size={15} /> Log Trip</Btn>
+      </div>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}>
+      <Stat label="Miles" value={`${tm.toFixed(1)}${purposeQ ? " (filtered)" : ""}`} color="#f59e0b" icon="car" />
+      <Stat label="Rate" value={`$${rate}/mi`} color="#94a3b8" icon="tag" />
+      <Stat label="Deduction" value={$(tm * rate)} color="#22c55e" icon="dollar" />
+    </div>
+    {trips.length === 0 ? <Empty icon="car" text="No trips." /> : visible.length === 0 ? <Empty icon="search" text="No trips match that filter." /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>
+      <th style={{ padding: "9px 12px", width: 36, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
+        <input type="checkbox" checked={visible.length > 0 && visible.every(t => selected.has(t.id))} onChange={toggleAll} style={{ cursor: "pointer", accentColor: "#3b82f6" }} />
+      </th>
+      {[
+        { label: "Date",    key: "date",  align: "left"  },
+        { label: "Purpose", key: null,    align: "left"  },
+        { label: "Route",   key: null,    align: "left"  },
+        { label: "Miles",   key: "miles", align: "right" },
+        { label: "Ded.",    key: null,    align: "right" },
+        { label: "",        key: null,    align: "center", w: 70 },
+      ].map(({ label, key, align, w }) => (
+        <th key={label} onClick={key ? () => toggleSort(key) : undefined} style={{ textAlign: align, padding: "9px 12px", fontSize: 10, fontWeight: 600, color: key && sortKey === key ? "#f1f5f9" : "#64748b", textTransform: "uppercase", background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: w, cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+          {label}{key ? arrow(key) : ""}
+        </th>
+      ))}
+    </tr></thead><tbody>{visible.map((t) => { const isSel = selected.has(t.id); return <tr key={t.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isSel ? "3px solid #3b82f6" : "3px solid transparent", background: isSel ? "rgba(59,130,246,.08)" : undefined }}><td style={{ padding: "10px 12px", textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleRow(t.id)} style={{ cursor: "pointer", accentColor: "#3b82f6" }} /></td><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.date}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{t.purpose || "—"}</td><td style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>{t.from || "?"} → {t.to || "?"}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b" }}>{t.miles.toFixed(1)}</td><td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", color: "#22c55e" }}>{$(t.miles * rate)}</td><td style={{ padding: "10px 12px", textAlign: "center" }}><button onClick={() => onEdit(t)} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 3 }}><I name="edit" size={14} /></button><button onClick={() => onDelete(t.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", padding: 3 }}><I name="trash" size={14} /></button></td></tr>; })}</tbody></table></Card>}
   </div>;
 }
 
 // ─── INVOICES ─────────────────────────────────────────────────────────────────
-function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc }) {
+function InvV({ invoices, biz, onAdd, onEdit, onDelete, onBatchDelete, onPreview, reload, bc }) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
+  const [selected, setSelected] = useState(new Set());
+  const [confirmBatch, setConfirmBatch] = useState(false);
   const sc = { Draft: "#94a3b8", Sent: "#3b82f6", Viewed: "#8b5cf6", Paid: "#22c55e", Overdue: "#ef4444" };
   const today = td();
+  const toggleSort = (key) => { if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc"); else { setSortKey(key); setSortDir("desc"); } };
+  const arrow = (key) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  const toggleRow = (id) => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
+  const toggleAll = () => { setConfirmBatch(false); setSelected(s => { const n = new Set(s); const allOn = filtered.length > 0 && filtered.every(i => n.has(i.id)); allOn ? filtered.forEach(i => n.delete(i.id)) : filtered.forEach(i => n.add(i.id)); return n; }); };
   // Auto-flag overdue: Sent/Viewed past due date
   const withStatus = invoices.map((i) => {
     if (i.status !== "Paid" && i.status !== "Draft" && i.dueDate && i.dueDate < today) return { ...i, status: "Overdue" };
@@ -1369,13 +1460,27 @@ function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc })
   const outstanding = withStatus.filter((i) => i.status !== "Paid").reduce((s, i) => s + i.amount, 0);
   const collected   = withStatus.filter((i) => i.status === "Paid").reduce((s, i) => s + i.amount, 0);
   const overdueCount = withStatus.filter((i) => i.status === "Overdue").length;
+  const filtered = [...(statusFilter === "all" ? withStatus : withStatus.filter(i => i.status === statusFilter))].sort((a, b) => {
+    const av = sortKey === "date" ? (a.date || "") : sortKey === "amount" ? (a.amount || 0) : (a.clientName || "").toLowerCase();
+    const bv = sortKey === "date" ? (b.date || "") : sortKey === "amount" ? (b.amount || 0) : (b.clientName || "").toLowerCase();
+    return av < bv ? (sortDir === "asc" ? -1 : 1) : av > bv ? (sortDir === "asc" ? 1 : -1) : 0;
+  });
   return <div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <h3 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9" }}>Invoices</h3>
         {overdueCount > 0 && <span style={{ fontSize: 11, background: "rgba(239,68,68,.15)", color: "#ef4444", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>⚠ {overdueCount} overdue</span>}
       </div>
-      <Btn onClick={onAdd}><I name="plus" size={15} /> New Invoice</Btn>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inp, width: 120, fontSize: 12, background: "#111827" }}>
+          <option value="all">All Statuses</option>
+          {["Draft","Sent","Viewed","Paid","Overdue"].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {(() => { const sel = filtered.filter(i => selected.has(i.id)); return sel.length > 0 && (confirmBatch
+          ? <><Btn v="danger" onClick={async () => { await onBatchDelete(sel.map(i => i.id)); setSelected(new Set()); setConfirmBatch(false); }}>⚠ Confirm ({sel.length})</Btn><Btn v="ghost" onClick={() => setConfirmBatch(false)}>Cancel</Btn></>
+          : <Btn v="danger" onClick={() => setConfirmBatch(true)}><I name="trash" size={14} /> Delete ({sel.length})</Btn>); })()}
+        <Btn onClick={onAdd}><I name="plus" size={15} /> New Invoice</Btn>
+      </div>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 20 }}>
       <Stat label="Outstanding" value={$(outstanding)} color="#f59e0b" icon="send" />
@@ -1383,9 +1488,27 @@ function InvV({ invoices, biz, onAdd, onEdit, onDelete, onPreview, reload, bc })
       <Stat label="Total Invoices" value={invoices.length} color={bc} icon="file" />
       <Stat label="Avg Invoice" value={invoices.length ? $(invoices.reduce((s,i)=>s+i.amount,0)/invoices.length) : "$0"} color="#8b5cf6" icon="dollar" />
     </div>
-    {invoices.length === 0 ? <Empty icon="send" text="No invoices yet. Create your first one!" /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["#", "Date", "Client", "Description", "Status", "Amount", ""].map((h, i) => <th key={i} style={{ textAlign: i === 5 ? "right" : i === 6 ? "center" : "left", padding: "9px 12px", fontSize: 10, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: i === 0 ? 100 : i === 6 ? 120 : undefined }}>{h}</th>)}</tr></thead><tbody>{withStatus.map((i) => {
+    {invoices.length === 0 ? <Empty icon="send" text="No invoices yet. Create your first one!" /> : <Card style={{ padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>
+      <th style={{ padding: "9px 12px", width: 36, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
+        <input type="checkbox" checked={filtered.length > 0 && filtered.every(i => selected.has(i.id))} onChange={toggleAll} style={{ cursor: "pointer", accentColor: "#3b82f6" }} />
+      </th>
+      {[
+        { label: "#",          key: null,       align: "left",  w: 100 },
+        { label: "Date",       key: "date",     align: "left"          },
+        { label: "Client",     key: "client",   align: "left"          },
+        { label: "Description",key: null,       align: "left"          },
+        { label: "Status",     key: null,       align: "left"          },
+        { label: "Amount",     key: "amount",   align: "right"         },
+        { label: "",           key: null,       align: "center", w: 120 },
+      ].map(({ label, key, align, w }) => (
+        <th key={label} onClick={key ? () => toggleSort(key) : undefined} style={{ textAlign: align, padding: "9px 12px", fontSize: 10, fontWeight: 600, color: key && sortKey === key ? "#f1f5f9" : "#64748b", textTransform: "uppercase", letterSpacing: .8, background: "rgba(15,15,26,.5)", borderBottom: "1px solid rgba(255,255,255,.06)", width: w, cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+          {label}{key ? arrow(key) : ""}
+        </th>
+      ))}
+    </tr></thead><tbody>{filtered.map((i) => { const isSel = selected.has(i.id);
       const isOverdue = i.status === "Overdue";
-      return <tr key={i.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isOverdue ? "3px solid #ef4444" : "3px solid transparent", background: isOverdue ? "rgba(239,68,68,.03)" : undefined }}>
+      return <tr key={i.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)", borderLeft: isSel ? "3px solid #3b82f6" : isOverdue ? "3px solid #ef4444" : "3px solid transparent", background: isSel ? "rgba(59,130,246,.08)" : isOverdue ? "rgba(239,68,68,.03)" : undefined }}>
+        <td style={{ padding: "10px 12px", textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleRow(i.id)} style={{ cursor: "pointer", accentColor: "#3b82f6" }} /></td>
         <td style={{ padding: "10px 12px", fontSize: 12, color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>{i.invoiceNumber || "—"}</td>
         <td style={{ padding: "10px 12px", fontSize: 13 }}>{i.date}</td>
         <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500, color: "#f1f5f9" }}>{i.clientName || "—"}</td>
