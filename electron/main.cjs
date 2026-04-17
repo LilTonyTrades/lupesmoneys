@@ -166,6 +166,9 @@ function createMenu() {
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 // Saved when the real update-downloaded event fires.
 let _downloadedInstallerPath = null;
+// Set true while install-update is in progress so the global error handler
+// doesn't surface a quitAndInstall "no filepath" error to the user.
+let _installInProgress = false;
 
 // Scan electron-updater's cache directories for the newest installer .exe.
 // Used when _downloadedInstallerPath is null (update-downloaded never fired).
@@ -239,45 +242,54 @@ ipcMain.on('install-update', (event) => {
     return;
   }
   app.isQuitting = true;
+  _installInProgress = true;
 
-  // Primary path: let electron-updater handle quit + install.
-  // quitAndInstall quits the app and spawns the NSIS installer which re-launches
-  // the app after updating.
+  // ── Strategy 1: Direct spawn ───────────────────────────────────────────────
+  // Always try this first — it works regardless of whether electron-updater's
+  // internal download state is intact.  quitAndInstall() silently emits an
+  // 'error' event (doesn't throw) when its internal filepath is missing, so
+  // putting it first caused the try-catch to succeed, we returned early, and
+  // the real fallback here never ran.
+  const installerPath = findUpdaterInstaller();
+  if (installerPath) {
+    console.log('[updater] Launching installer directly:', installerPath);
+    try {
+      require('child_process').spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
+      setTimeout(() => {
+        _installInProgress = false;
+        try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
+        app.exit(0);
+      }, 1200);
+      return;
+    } catch (e) {
+      console.error('[updater] Direct spawn failed:', e.message);
+    }
+  }
+
+  // ── Strategy 2: quitAndInstall ────────────────────────────────────────────
+  // Only reached when no installer file is found on disk.  quitAndInstall may
+  // emit 'error' instead of throwing — the global error handler checks
+  // _installInProgress and stays quiet so we can send our own message.
+  console.log('[updater] No installer file on disk, trying quitAndInstall...');
   try {
-    console.log('[updater] Calling quitAndInstall...');
     require('electron-updater').autoUpdater.quitAndInstall(false, true);
-    // quitAndInstall calls app.quit() internally — give it time then force-exit
-    // as a safety net in case lifecycle hooks stall.
     setTimeout(() => {
+      _installInProgress = false;
       try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
       app.exit(0);
     }, 3000);
     return;
   } catch (e) {
-    console.error('[updater] quitAndInstall failed:', e.message);
+    console.error('[updater] quitAndInstall threw:', e.message);
   }
 
-  // Fallback: find the downloaded installer and spawn it manually
-  const installerPath = findUpdaterInstaller();
-  if (installerPath) {
-    console.log('[updater] Spawning installer manually:', installerPath);
-    try {
-      require('child_process').spawn(installerPath, [], { detached: true, stdio: 'ignore' }).unref();
-      setTimeout(() => {
-        try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch (_) {}
-        app.exit(0);
-      }, 800);
-      return;
-    } catch (e2) {
-      console.error('[updater] Manual spawn failed:', e2.message);
-    }
-  }
-
-  // Both methods failed — recover gracefully
+  // ── All methods failed — recover gracefully ───────────────────────────────
   console.error('[updater] All install methods failed');
+  _installInProgress = false;
   app.isQuitting = false;
   try {
-    mainWindow?.webContents.send('update-error', 'Could not install update. Please download the latest version manually from GitHub.');
+    mainWindow?.webContents.send('update-error',
+      'Could not install update automatically. Please download the latest installer from GitHub.');
   } catch (_) {}
 });
 ipcMain.on('check-for-update', (event) => {
@@ -347,6 +359,13 @@ function setupAutoUpdater(win) {
 
   updater.on('error', (err) => {
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    // Suppress errors that fire during install-update attempts (e.g. quitAndInstall
+    // emitting "No update filepath provided" instead of throwing) — the IPC
+    // handler manages its own messaging in that case.
+    if (_installInProgress) {
+      console.warn('[updater] Error during install (suppressed from UI):', err.message);
+      return;
+    }
     if (app.isPackaged) win.webContents.send('update-error', err.message);
   });
 
