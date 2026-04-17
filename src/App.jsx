@@ -1887,8 +1887,11 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
   };
 
   const savedTxnsRef = useRef([]);
+  const runLockRef   = useRef(false);
 
   const runBatch = async () => {
+    if (runLockRef.current) return; // synchronous reentrancy guard
+    runLockRef.current = true;
     setRunning(true);
     savedTxnsRef.current = [];
     for (let i = 0; i < items.length; i++) {
@@ -1932,6 +1935,7 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
         setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "error", error: err.message, pct: 0 } : x));
       }
     }
+    runLockRef.current = false;
     setRunning(false);
     setFinished(true);
   };
