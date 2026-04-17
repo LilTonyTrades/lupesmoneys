@@ -1763,9 +1763,19 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
           ),
           new Promise((_, rej) => setTimeout(() => rej(new Error("Timed out after 90s")), 90_000)),
         ]);
+        // Sanity-check the OCR date: 2-digit years (e.g. "4/17/26") can parse
+        // as 1926 in some JS engines, making the transaction invisible under the
+        // current-year filter.  Clamp anything outside [currentYear-10, currentYear+1]
+        // to today so the expense always lands in a visible year.
+        const rawDate = result.date || td();
+        const parsedYear = parseInt(rawDate.slice(0, 4));
+        const nowYear = new Date().getFullYear();
+        const safeDate = (!isNaN(parsedYear) && parsedYear >= nowYear - 10 && parsedYear <= nowYear + 1)
+          ? rawDate
+          : td();
         const txn = {
           id: uid(), bizId, type: "expense",
-          date:        result.date        || td(),
+          date:        safeDate,
           amount:      result.amount      || 0,
           vendor:      result.vendor      || "",
           description: result.description || item.file.name,

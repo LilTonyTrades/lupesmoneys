@@ -100,12 +100,34 @@ function parseReceiptText(text) {
     /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/,
     /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})\b/i,
   ];
+  const curYear = new Date().getFullYear();
   for (const pat of datePatterns) {
     const m = text.match(pat);
     if (m) {
       try {
         const d = new Date(m[0]);
         if (!isNaN(d.getTime())) {
+          // Fix 2-digit year ambiguity: "4/17/26" can parse as 1926 in V8.
+          // If the parsed year looks like a misread 2-digit year (e.g. < 2000
+          // but the 2-digit suffix would map to a plausible recent year), shift it.
+          const y = d.getFullYear();
+          if (y < 2000) {
+            const twoDigit = y % 100;
+            const candidate = 2000 + twoDigit;
+            // Accept if the candidate year is within 5 years of today; reject otherwise.
+            if (Math.abs(candidate - curYear) <= 5) {
+              d.setFullYear(candidate);
+            } else {
+              console.log('[OCR] Date rejected (implausible year):', m[0], '->', y);
+              continue; // try next pattern
+            }
+          }
+          // Final range check: reject dates more than 10 years old or in the future.
+          const parsed = d.getFullYear();
+          if (parsed < curYear - 10 || parsed > curYear + 1) {
+            console.log('[OCR] Date rejected (out of range):', m[0], '->', parsed);
+            continue;
+          }
           date = d.toISOString().slice(0, 10);
           console.log('[OCR] Date matched:', m[0], '->', date);
           break;
