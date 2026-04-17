@@ -433,7 +433,22 @@ function App() {
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
       </main>
-      {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={() => { reload(); close(); }} onClose={close} />}
+      {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={async (savedTxns) => {
+        await reload();
+        close();
+        if (!savedTxns?.length) return;
+        // Determine which years the saved expenses landed in
+        const savedYears = [...new Set(savedTxns.map(t => t.date?.slice(0, 4)).filter(Boolean))];
+        const currentYearStr = String(year);
+        const wrongYears = savedYears.filter(y => y !== currentYearStr);
+        if (wrongYears.length > 0) {
+          // Auto-switch to the most common year if ALL landed elsewhere
+          if (!savedYears.includes(currentYearStr)) setYear(parseInt(savedYears[0]));
+          setGlobalError(`${savedTxns.length} expense${savedTxns.length !== 1 ? "s" : ""} saved — dates on receipts point to ${savedYears.join(" & ")}. Switched year view automatically.`);
+        } else {
+          setSuccessToast({ msg: `${savedTxns.length} expense${savedTxns.length !== 1 ? "s" : ""} added from receipts`, items: [] });
+        }
+      }} onClose={close} />}
       {modal?.t === "csv-import" && <CsvImportModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={(count, failures) => { reload(); setSuccessToast({ msg: `${count} transaction${count !== 1 ? "s" : ""} imported from CSV${failures && failures.length ? ` (${failures.length} skipped)` : ""}`, items: [] }); if (failures && failures.length) setGlobalError(`${failures.length} row${failures.length !== 1 ? "s" : ""} could not be imported. First error: ${failures[0]}`); close(); }} onClose={close} />}
       {modal?.t === "txn" && <TxnForm {...modal.d} bizId={bizId} bCons={bCons} onSave={async (t) => { await put("transactions", t); reload(); close(); }} onClose={close} />}
       {modal?.t === "mile" && <MileForm {...modal.d} bizId={bizId} onSave={async (m) => { await put("mileage", m); reload(); close(); }} onClose={close} />}
@@ -1748,8 +1763,11 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
     e.target.value = "";
   };
 
+  const savedTxnsRef = useRef([]);
+
   const runBatch = async () => {
     setRunning(true);
+    savedTxnsRef.current = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.status === "done") continue; // skip already scanned
@@ -1785,6 +1803,7 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
           receiptFile: { data, mimeType: item.file.type, filename: item.file.name },
         };
         await onSave(txn);
+        savedTxnsRef.current.push(txn);
         setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", result, pct: 1 } : x));
       } catch (err) {
         setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "error", error: err.message, pct: 0 } : x));
@@ -1848,7 +1867,7 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 {!running && <Btn onClick={() => fileRef.current?.click()} v="ghost">Scan More</Btn>}
-                <Btn v="green" onClick={onDone}><I name="check" size={15} /> Done</Btn>
+                <Btn v="green" onClick={() => onDone(savedTxnsRef.current)}><I name="check" size={15} /> Done</Btn>
               </div>
             </div>
           ) : (
