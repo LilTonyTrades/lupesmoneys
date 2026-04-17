@@ -1886,17 +1886,27 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
     e.target.value = "";
   };
 
-  const savedTxnsRef = useRef([]);
-  const runLockRef   = useRef(false);
+  const savedTxnsRef  = useRef([]);
+  const runLockRef    = useRef(false);   // synchronous reentrancy guard
+  const cancelledRef  = useRef(false);   // set true on unmount to stop background saves
+  const savedFilesRef = useRef(new Set()); // tracks file name+size already saved this session
+
+  useEffect(() => { return () => { cancelledRef.current = true; }; }, []);
 
   const runBatch = async () => {
-    if (runLockRef.current) return; // synchronous reentrancy guard
+    if (runLockRef.current) return;
     runLockRef.current = true;
     setRunning(true);
     savedTxnsRef.current = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.status === "done") continue; // skip already scanned
+      const fileKey = item.file.name + "|'" + item.file.size;
+      if (savedFilesRef.current.has(fileKey)) {
+        // Already saved this exact file in this session — mark done, skip save
+        setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", pct: 1 } : x));
+        continue;
+      }
       setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "scanning", pct: 0 } : x));
       try {
         const data = await fileToBase64(item.file);
@@ -1928,7 +1938,9 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
           notes:       "",
           receiptFile: { data, mimeType: item.file.type, filename: item.file.name },
         };
+        if (cancelledRef.current) break; // modal closed mid-scan — abort remaining saves
         await onSave(txn);
+        savedFilesRef.current.add(fileKey);
         savedTxnsRef.current.push(txn);
         setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", result, pct: 1 } : x));
       } catch (err) {
@@ -1947,7 +1959,7 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
   const statusColor = (s) => s === "done" ? "#4ade80" : s === "error" ? "#f87171" : s === "scanning" ? "#a5b4fc" : "#64748b";
 
   return (
-    <Modal title="Batch Scan Receipts" onClose={onClose} w={520}>
+    <Modal title="Batch Scan Receipts" onClose={running ? undefined : onClose} w={520}>
       {/* File picker */}
       <input ref={fileRef} type="file" multiple accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleFiles} />
 
