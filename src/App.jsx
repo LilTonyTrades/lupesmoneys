@@ -49,8 +49,8 @@ const INV_ST = ["Draft", "Sent", "Viewed", "Paid", "Overdue"];
 
 // ─── DB ──────────────────────────────────────────────────────────────────────
 const DB = "OpenClawBooks";
-const VER = 4;
-const STORES = ["businesses", "transactions", "mileage", "invoices", "contractors", "goals", "rules"];
+const VER = 5;
+const STORES = ["businesses", "transactions", "mileage", "invoices", "contractors", "goals", "rules", "employees", "payRuns"];
 function openDB() {
   return new Promise((ok, no) => {
     const r = indexedDB.open(DB, VER);
@@ -210,6 +210,8 @@ function App() {
   const [cons, setCons] = useState([]);
   const [goals, setGoals] = useState([]);
   const [rules, setRules] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [payRuns, setPayRuns] = useState([]);
   const [view, setView] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -227,7 +229,7 @@ function App() {
   const recurringChecked = useRef(null); // tracks last bizId processed so we run once per session per biz
 
   const reload = useCallback(async () => {
-    const [b, t, m, i, c, g, rv] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals"), getAll("rules")]);
+    const [b, t, m, i, c, g, rv, emp, pr] = await Promise.all([getAll("businesses"), getAll("transactions"), getAll("mileage"), getAll("invoices"), getAll("contractors"), getAll("goals"), getAll("rules"), getAll("employees"), getAll("payRuns")]);
     setBusinesses(b.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     setTxns(t.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
     setMiles(m.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
@@ -235,6 +237,8 @@ function App() {
     setCons(c.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
     setGoals(g);
     setRules(rv);
+    setEmployees(emp.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    setPayRuns(pr.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
     if (!bizId && b.length > 0) setBizId(b[0].id);
     setLoading(false);
   }, [bizId]);
@@ -324,6 +328,8 @@ function App() {
   const bInvs = useMemo(() => invs.filter((i) => i.bizId === bizId), [invs, bizId]);
   const bCons = useMemo(() => cons.filter((c) => c.bizId === bizId), [cons, bizId]);
   const bGoals = useMemo(() => goals.filter((g) => g.bizId === bizId), [goals, bizId]);
+  const bEmployees = useMemo(() => employees.filter((e) => e.bizId === bizId), [employees, bizId]);
+  const bPayRuns = useMemo(() => payRuns.filter((r) => r.bizId === bizId), [payRuns, bizId]);
   const yTxns = useMemo(() => bTxns.filter((t) => t.date?.startsWith(String(year))), [bTxns, year]);
   const yMiles = useMemo(() => bMiles.filter((m) => m.date?.startsWith(String(year))), [bMiles, year]);
   const yInvs = useMemo(() => bInvs.filter((i) => i.date?.startsWith(String(year))), [bInvs, year]);
@@ -358,6 +364,7 @@ function App() {
     { id: "contractors", icon: "users", label: "1099" },
     { id: "reports", icon: "pie", label: "Reports" },
     { id: "goals", icon: "target", label: "Goals" },
+    { id: "payroll", icon: "briefcase", label: "Payroll" },
     { id: "export", icon: "download", label: "Export" },
   ];
   const bc = biz?.color || "#3b82f6";
@@ -430,6 +437,7 @@ function App() {
         : view === "contractors" ? <ConV contractors={bCons} txns={yTxns} biz={biz} year={year} onAdd={() => setModal({ t: "con", d: {} })} onEdit={(c) => setModal({ t: "con", d: { ...c, editId: c.id } })} onDelete={async (id) => { await del("contractors", id); reload(); }} onDetail={(c) => setModal({ t: "con-detail", d: { contractor: c } })} bc={bc} />
         : view === "reports" ? <Reps txns={bizOnly} miles={yMiles} invoices={yInvs} year={year} totInc={totInc} totExp={totExp} net={net} mileDed={mileDed} seTax={seTax} bc={bc} biz={biz} />
         : view === "goals" ? <GoalsV goals={bGoals} totInc={totInc} net={net} year={year} onAdd={() => setModal({ t: "goal", d: {} })} onDelete={async (id) => { await del("goals", id); reload(); }} bc={bc} />
+        : view === "payroll" ? <PayrollV bizId={bizId} employees={bEmployees} payRuns={bPayRuns} year={year} onAddEmployee={() => setModal({ t: "emp", d: {} })} onEditEmployee={(e) => setModal({ t: "emp", d: { ...e, editId: e.id } })} onDeleteEmployee={async (id) => { await del("employees", id); reload(); }} onAddPayRun={() => setModal({ t: "pay-run" })} onViewStub={(r) => setModal({ t: "pay-stub", d: { run: r } })} onDeletePayRun={async (id) => { const r = bPayRuns.find((p) => p.id === id); await del("payRuns", id); if (r?.txnId) await del("transactions", r.txnId); reload(); }} bc={bc} />
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
       </main>
@@ -460,6 +468,9 @@ function App() {
       {modal?.t === "rules" && <RulesModal bizId={bizId} rules={rules} txns={bizOnly} onSave={async (r) => { await put("rules", r); reload(); }} onDelete={async (id) => { await del("rules", id); reload(); }} onApply={async (updated) => { await Promise.all(updated.map(t => put("transactions", t))); reload(); setSuccessToast({ msg: `${updated.length} transaction${updated.length !== 1 ? "s" : ""} auto-categorized`, items: [] }); }} onClose={close} />}
       {modal?.t === "goal" && <GoalForm bizId={bizId} onSave={async (g) => { await put("goals", g); reload(); close(); }} onClose={close} />}
       {modal?.t === "biz" && <BizForm {...modal.d} onSave={async (b) => { await put("businesses", b); if (!bizId) setBizId(b.id); reload(); close(); }} onClose={close} />}
+      {modal?.t === "emp" && <EmployeeForm {...(modal.d || {})} bizId={bizId} onSave={async (e) => { await put("employees", e); reload(); close(); }} onClose={close} />}
+      {modal?.t === "pay-run" && <PayRunForm bizId={bizId} employees={bEmployees} year={year} onSave={async (r, txn) => { await put("payRuns", r); await put("transactions", txn); reload(); close(); }} onClose={close} />}
+      {modal?.t === "pay-stub" && <PayStubModal run={modal.d?.run} employee={bEmployees.find((e) => e.id === modal.d?.run?.employeeId)} onClose={close} />}
       {modal?.t === "biz-manage" && <BizManage businesses={businesses} currentId={bizId} onSwitch={(id) => { setBizId(id); close(); setView("dashboard"); }} onEdit={(b) => { close(); setTimeout(() => setModal({ t: "biz", d: { ...b, editId: b.id } }), 50); }} onDelete={async (id) => { await del("businesses", id); if (bizId === id) { const r = businesses.filter((b) => b.id !== id); setBizId(r[0]?.id || null); } reload(); close(); }} onClose={close} />}
       {showSettings && (
         <SettingsModal
@@ -3102,4 +3113,440 @@ function ConForm({ editId, name: n, ein: e, email: em, phone: ph, address: ad, b
 function GoalForm({ bizId, onSave, onClose }) {
   const [f, setF] = useState({ name: "", metric: "revenue", target: "", deadline: "" });
   return <Modal title="Set Goal" onClose={onClose} w={420}><div style={{ display: "flex", flexDirection: "column", gap: 14 }}><Field label="Goal"><input placeholder="e.g. $50K revenue" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={inp} /></Field><Field label="Metric"><select value={f.metric} onChange={(e) => setF({ ...f, metric: e.target.value })} style={inp}><option value="revenue">Revenue</option><option value="profit">Net Profit</option></select></Field><Field label="Target ($)"><input type="number" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} style={inp} /></Field><Field label="Deadline"><input type="date" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} style={inp} /></Field></div><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => { if (!f.name || !f.target) return; onSave({ id: uid(), bizId, ...f, target: parseFloat(f.target) || 0 }); }}><I name="check" size={15} /> Save</Btn></div></Modal>;
+}
+
+
+// ─── PAYROLL ──────────────────────────────────────────────────────────────────
+
+// 2024 IRS Pub 15-T Percentage Method — annual brackets [threshold, rate, base_tax]
+const FED_BRACKETS = {
+  Single:  [[609350,0.37,183647],[243725,0.35,55678.50],[191950,0.32,39110.50],[100525,0.24,17168.50],[47150,0.22,5426],[11600,0.12,1160],[0,0.10,0]],
+  Married: [[731200,0.37,196669.50],[487450,0.35,111357],[383900,0.32,78221],[201050,0.24,34337],[94300,0.22,10852],[23200,0.12,2320],[0,0.10,0]],
+};
+const ALLOWANCE_ANNUAL = 4300; // 2024 withholding allowance per allowance claimed
+const SS_RATE = 0.062;
+const SS_WAGE_BASE = 168600; // 2024
+const MEDICARE_RATE = 0.0145;
+const ADD_MEDICARE_RATE = 0.009; // Additional Medicare Tax over $200k
+const ADD_MEDICARE_THRESHOLD = 200000;
+const PAY_PERIODS = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12 };
+
+function calcFedWithholding(annualWage, filingStatus, allowances) {
+  const taxable = Math.max(0, annualWage - (allowances || 0) * ALLOWANCE_ANNUAL);
+  const brackets = FED_BRACKETS[filingStatus] || FED_BRACKETS.Single;
+  for (const [thresh, rate, base] of brackets) {
+    if (taxable > thresh) return base + (taxable - thresh) * rate;
+  }
+  return 0;
+}
+
+function calcPayRun(emp, hours, grossOverride, ytdWages) {
+  const periods = PAY_PERIODS[emp.payFreq] || 26;
+  const gross = grossOverride != null
+    ? grossOverride
+    : emp.payType === "salary"
+      ? (emp.payRate || 0) / periods
+      : (hours || 0) * (emp.payRate || 0);
+
+  const annualGross = gross * periods;
+  const annualFed = calcFedWithholding(annualGross, emp.filingStatus, emp.allowances);
+  const federalTax = Math.max(0, annualFed / periods);
+
+  // SS capped at wage base; ytdWages tracks what's already been taxed this year
+  const prevYtd = ytdWages || 0;
+  const remainingBase = Math.max(0, SS_WAGE_BASE - prevYtd);
+  const ssTax = Math.min(gross, remainingBase) * SS_RATE;
+
+  // Additional Medicare Tax applied on annualized basis then prorated
+  const addlMedicare = Math.max(0, (annualGross - ADD_MEDICARE_THRESHOLD) / periods) * ADD_MEDICARE_RATE;
+  const medicareTax = gross * MEDICARE_RATE + addlMedicare;
+
+  const r = (v) => Math.round(v * 100) / 100;
+  return {
+    gross: r(gross),
+    federalTax: r(federalTax),
+    ssTax: r(ssTax),
+    medicareTax: r(medicareTax),
+    employerSS: r(ssTax),           // employer matches employee SS exactly
+    employerMedicare: r(gross * MEDICARE_RATE),
+  };
+}
+
+function maskSSN(ssn) {
+  if (!ssn) return "—";
+  const s = ssn.replace(/\D/g, "");
+  return "***-**-" + (s.length >= 4 ? s.slice(-4) : s);
+}
+
+// ─── Payroll Main View ────────────────────────────────────────────────────────
+function PayrollV({ bizId, employees, payRuns, year, onAddEmployee, onEditEmployee, onDeleteEmployee, onAddPayRun, onViewStub, onDeletePayRun, bc }) {
+  const [tab, setTab] = useState("runs");
+  const [empFilter, setEmpFilter] = useState("all");
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const yRuns = payRuns.filter((r) => r.date?.startsWith(String(year)));
+  const filtered = empFilter === "all" ? yRuns : yRuns.filter((r) => r.employeeId === empFilter);
+  const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
+
+  const w2Data = employees.map((emp) => {
+    const runs = payRuns.filter((r) => r.date?.startsWith(String(year)) && r.employeeId === emp.id);
+    return {
+      emp,
+      wages:            sumAmt(runs, (r) => r.gross),
+      fedWithheld:      sumAmt(runs, (r) => r.federalTax),
+      ssWages:          Math.min(sumAmt(runs, (r) => r.gross), SS_WAGE_BASE),
+      ssWithheld:       sumAmt(runs, (r) => r.ssTax),
+      medicareWages:    sumAmt(runs, (r) => r.gross),
+      medicareWithheld: sumAmt(runs, (r) => r.medicareTax),
+    };
+  });
+
+  const exportW2 = () => {
+    const header = csvRow(["Employee Name","SSN (last 4)","Box 1 Wages","Box 2 Federal Withheld","Box 3 SS Wages","Box 4 SS Tax Withheld","Box 5 Medicare Wages","Box 6 Medicare Tax Withheld"]);
+    const rows = w2Data.map(({ emp, wages, fedWithheld, ssWages, ssWithheld, medicareWages, medicareWithheld }) =>
+      csvRow([emp.name, maskSSN(emp.ssn), wages.toFixed(2), fedWithheld.toFixed(2), ssWages.toFixed(2), ssWithheld.toFixed(2), medicareWages.toFixed(2), medicareWithheld.toFixed(2)])
+    );
+    dlFile([header, ...rows].join("\r\n"), `W2-Summary-${year}.csv`, "text/csv");
+  };
+
+  const tabBtn = (t, label) => (
+    <button key={t} onClick={() => setTab(t)} style={{ padding: "7px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, fontFamily: "'DM Sans',sans-serif", background: tab === t ? `${bc}22` : "transparent", color: tab === t ? bc : "#94a3b8", transition: "all .15s" }}>{label}</button>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#f9fafb", margin: 0 }}>Payroll</h2>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{year} · {employees.length} employee{employees.length !== 1 ? "s" : ""}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {tab === "runs"      && <Btn onClick={onAddPayRun}><I name="plus" size={14} /> Run Payroll</Btn>}
+          {tab === "employees" && <Btn onClick={onAddEmployee}><I name="plus" size={14} /> Add Employee</Btn>}
+          {tab === "w2" && employees.length > 0 && <Btn v="green" onClick={exportW2}><I name="download" size={14} /> Export W-2 CSV</Btn>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 2, marginBottom: 20, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+        {tabBtn("runs", "Pay Runs")}
+        {tabBtn("employees", "Employees")}
+        {tabBtn("w2", "W-2 Summary")}
+      </div>
+
+      {/* ── PAY RUNS TAB ── */}
+      {tab === "runs" && (
+        <div>
+          {yRuns.length > 0 && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <select value={empFilter} onChange={(e) => setEmpFilter(e.target.value)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 12, outline: "none", fontFamily: "'DM Sans',sans-serif" }}>
+                <option value="all">All Employees</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+          )}
+          {filtered.length === 0
+            ? <Empty icon="briefcase" text={employees.length === 0 ? "Add employees first, then run payroll." : "No pay runs for this period."} />
+            : <Card style={{ padding: 0 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "rgba(15,15,26,.98)" }}>
+                      {["Date","Employee","Gross","Fed Tax","SS","Medicare","State","Net Pay",""].map((h, i) => (
+                        <th key={i} style={{ textAlign: i >= 2 ? "right" : "left", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .6, borderBottom: "1px solid rgba(255,255,255,.08)", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r) => {
+                      const emp = empById[r.employeeId];
+                      return (
+                        <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                          <td style={{ padding: "10px 14px", color: "#94a3b8", whiteSpace: "nowrap", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{r.date}</td>
+                          <td style={{ padding: "10px 14px", color: "#e2e8f0", fontWeight: 500 }}>{emp?.name || "—"}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "#4ade80" }}>{$(r.gross)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#f87171" }}>{$(r.federalTax)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#fb923c" }}>{$(r.ssTax)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#fb923c" }}>{$(r.medicareTax)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#94a3b8" }}>{$(r.stateTax || 0)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#60a5fa" }}>{$(r.netPay)}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
+                            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                              <Btn v="ghost" s={{ padding: "4px 8px", fontSize: 11 }} onClick={() => onViewStub(r)}><I name="printer" size={12} /> Stub</Btn>
+                              {confirmDel === r.id
+                                ? <><Btn v="danger" s={{ padding: "4px 8px", fontSize: 11 }} onClick={async () => { await onDeletePayRun(r.id); setConfirmDel(null); }}>Confirm</Btn><Btn v="ghost" s={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setConfirmDel(null)}>Cancel</Btn></>
+                                : <Btn v="ghost" s={{ padding: "4px 8px", fontSize: 11 }} onClick={() => setConfirmDel(r.id)}><I name="trash" size={12} /></Btn>
+                              }
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Card>
+          }
+        </div>
+      )}
+
+      {/* ── EMPLOYEES TAB ── */}
+      {tab === "employees" && (
+        <div>
+          {employees.length === 0
+            ? <Empty icon="users" text="No employees yet. Add your first employee to get started." />
+            : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
+                {employees.map((emp) => (
+                  <Card key={emp.id} accent={bc}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#f9fafb" }}>{emp.name}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{emp.payType === "salary" ? "Salary" : "Hourly"} · {emp.payFreq}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Btn v="ghost" s={{ padding: "4px 8px", fontSize: 11 }} onClick={() => onEditEmployee(emp)}><I name="edit" size={12} /></Btn>
+                        <Btn v="danger" s={{ padding: "4px 8px", fontSize: 11 }} onClick={() => onDeleteEmployee(emp.id)}><I name="trash" size={12} /></Btn>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}>
+                      <div><span style={{ color: "#64748b" }}>SSN: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{maskSSN(emp.ssn)}</span></div>
+                      <div><span style={{ color: "#64748b" }}>Filing: </span><span>{emp.filingStatus}</span></div>
+                      <div><span style={{ color: "#64748b" }}>Rate: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: "#4ade80" }}>{$(emp.payRate)}{emp.payType === "hourly" ? "/hr" : "/yr"}</span></div>
+                      <div><span style={{ color: "#64748b" }}>State: </span><span>{emp.state || "—"}</span></div>
+                      {emp.address && <div style={{ gridColumn: "1/-1", color: "#64748b", fontSize: 11 }}>{emp.address}</div>}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+          }
+        </div>
+      )}
+
+      {/* ── W-2 TAB ── */}
+      {tab === "w2" && (
+        <div>
+          {employees.length === 0
+            ? <Empty icon="file" text="No employees. Add employees and run payroll to generate W-2 data." />
+            : <>
+                <Card style={{ padding: 0, marginBottom: 12 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "rgba(15,15,26,.98)" }}>
+                        {["Employee","Box 1 Wages","Box 2 Fed. Withheld","Box 3 SS Wages","Box 4 SS Tax","Box 5 Medic. Wages","Box 6 Medic. Tax"].map((h, i) => (
+                          <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 14px", fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .6, borderBottom: "1px solid rgba(255,255,255,.08)", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {w2Data.map(({ emp, wages, fedWithheld, ssWages, ssWithheld, medicareWages, medicareWithheld }) => (
+                        <tr key={emp.id} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                          <td style={{ padding: "10px 14px", color: "#e2e8f0", fontWeight: 500 }}>
+                            <div>{emp.name}</div>
+                            <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'JetBrains Mono',monospace" }}>{maskSSN(emp.ssn)}</div>
+                          </td>
+                          {[wages, fedWithheld, ssWages, ssWithheld, medicareWages, medicareWithheld].map((v, i) => (
+                            <td key={i} style={{ padding: "10px 14px", textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, color: i === 0 ? "#4ade80" : "#94a3b8" }}>{$(v)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+                <div style={{ padding: "10px 14px", background: "rgba(59,130,246,.06)", border: "1px solid rgba(59,130,246,.2)", borderRadius: 8, fontSize: 12, color: "#93c5fd" }}>
+                  W-2 forms are due to employees and the SSA by January 31, {year + 1}. Export the CSV above to prepare your filings.
+                </div>
+              </>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Employee Form ────────────────────────────────────────────────────────────
+function EmployeeForm({ editId, name: n, address: ad, ssn: ss, filingStatus: fs, allowances: al, state: st, payFreq: pf, payRate: pr, payType: pt, bizId, onSave, onClose }) {
+  const [f, setF] = useState({
+    name: n || "", address: ad || "", ssn: ss || "",
+    filingStatus: fs || "Single", allowances: al ?? 0,
+    state: st || "", payFreq: pf || "biweekly",
+    payRate: pr != null ? pr : "", payType: pt || "hourly",
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  return (
+    <Modal title={`${editId ? "Edit" : "Add"} Employee`} onClose={onClose} w={560}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field label="Full Name" span><input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Jane Doe" style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} /></Field>
+        <Field label="Address" span><input value={f.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St, City, ST 12345" style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} /></Field>
+        <Field label="SSN"><input value={f.ssn} onChange={(e) => set("ssn", e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} /></Field>
+        <Field label="Filing Status"><select value={f.filingStatus} onChange={(e) => set("filingStatus", e.target.value)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }}><option value="Single">Single</option><option value="Married">Married</option></select></Field>
+        <Field label="Fed. Allowances"><input type="number" min="0" value={f.allowances} onChange={(e) => set("allowances", parseInt(e.target.value) || 0)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} /></Field>
+        <Field label="State (abbr)"><input value={f.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="CA" maxLength={2} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} /></Field>
+        <Field label="Pay Type"><select value={f.payType} onChange={(e) => set("payType", e.target.value)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }}><option value="hourly">Hourly</option><option value="salary">Salary (annual)</option></select></Field>
+        <Field label="Pay Frequency"><select value={f.payFreq} onChange={(e) => set("payFreq", e.target.value)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }}><option value="weekly">Weekly</option><option value="biweekly">Bi-Weekly</option><option value="semimonthly">Semi-Monthly</option><option value="monthly">Monthly</option></select></Field>
+        <Field label={f.payType === "salary" ? "Annual Salary ($)" : "Hourly Rate ($)"} span>
+          <input type="number" min="0" step="0.01" value={f.payRate} onChange={(e) => set("payRate", e.target.value)} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" }} />
+        </Field>
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+        <Btn v="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn v="green" onClick={() => { if (!f.name || f.payRate === "") return; onSave({ id: editId || uid(), bizId, ...f, payRate: parseFloat(f.payRate) || 0, allowances: parseInt(f.allowances) || 0 }); }}><I name="check" size={15} /> {editId ? "Update" : "Add Employee"}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Pay Run Form ─────────────────────────────────────────────────────────────
+function PayRunForm({ bizId, employees, year, onSave, onClose }) {
+  const [empId, setEmpId] = useState(employees[0]?.id || "");
+  const [hours, setHours] = useState("");
+  const [grossOverride, setGrossOverride] = useState("");
+  const [stateTax, setStateTax] = useState("");
+  const [date, setDate] = useState(td());
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const emp = employees.find((e) => e.id === empId);
+
+  // Compute YTD wages for this employee (for SS cap purposes) — we pull from existing payRuns via prop
+  // The parent filters payRuns by bizId, so we can rely on the employees prop for display only.
+  // YTD is approximated at 0 here for the form; actual W-2 rollup is done in PayrollV.
+  const calc = emp ? calcPayRun(emp, parseFloat(hours) || 0, grossOverride !== "" ? parseFloat(grossOverride) || null : null, 0) : null;
+  const stTax = parseFloat(stateTax) || 0;
+  const netPay = calc ? Math.max(0, calc.gross - calc.federalTax - calc.ssTax - calc.medicareTax - stTax) : 0;
+
+  const inpSt = { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", width: "100%" };
+  const rowS = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.04)" };
+  const lbl = { fontSize: 12, color: "#94a3b8" };
+  const val = (color) => ({ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, fontSize: 13, color: color || "#e2e8f0" });
+
+  const salaryHint = emp?.payType === "salary" ? $(( emp.payRate || 0) / (PAY_PERIODS[emp.payFreq] || 26)) : null;
+
+  const save = async () => {
+    if (!emp || !calc || calc.gross <= 0) return;
+    const runId = uid();
+    const txnId = uid();
+    const run = { id: runId, bizId, employeeId: emp.id, date, payPeriodStart: periodStart, payPeriodEnd: periodEnd, hours: emp.payType === "hourly" ? parseFloat(hours) || 0 : null, ...calc, stateTax: stTax, netPay, txnId, notes };
+    const txn = { id: txnId, bizId, type: "expense", category: "L22", date, amount: calc.gross, vendor: emp.name, description: `Payroll — ${emp.name}`, scope: "business" };
+    await onSave(run, txn);
+  };
+
+  return (
+    <Modal title="Run Payroll" onClose={onClose} w={580}>
+      {employees.length === 0
+        ? <p style={{ color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>No employees found. Add employees first.</p>
+        : <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+              <Field label="Employee" span>
+                <select value={empId} onChange={(e) => { setEmpId(e.target.value); setHours(""); setGrossOverride(""); }} style={inpSt}>
+                  {employees.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.payType === "salary" ? "Salary" : "Hourly"})</option>)}
+                </select>
+              </Field>
+              <Field label="Pay Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inpSt} /></Field>
+              <Field label="Period Start"><input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} style={inpSt} /></Field>
+              <Field label="Period End"><input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} style={inpSt} /></Field>
+              {emp?.payType === "hourly"
+                ? <Field label="Hours Worked" span><input type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. 80" style={inpSt} /></Field>
+                : <Field label={`Override Gross Pay ($) — default ${salaryHint}`} span><input type="number" min="0" step="0.01" value={grossOverride} onChange={(e) => setGrossOverride(e.target.value)} placeholder={salaryHint || ""} style={inpSt} /></Field>
+              }
+              <Field label="State Income Tax ($)"><input type="number" min="0" step="0.01" value={stateTax} onChange={(e) => setStateTax(e.target.value)} placeholder="0.00" style={inpSt} /></Field>
+              <Field label="Notes"><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" style={inpSt} /></Field>
+            </div>
+
+            {calc && calc.gross > 0 && (
+              <div style={{ background: "rgba(15,23,42,.8)", borderRadius: 10, padding: "14px 16px", marginBottom: 20, border: "1px solid rgba(255,255,255,.06)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 10 }}>Pay Calculation</div>
+                <div style={rowS}><span style={lbl}>Gross Pay</span><span style={val("#4ade80")}>{$(calc.gross)}</span></div>
+                <div style={{ paddingLeft: 12 }}>
+                  <div style={rowS}><span style={lbl}>Federal Income Tax</span><span style={val("#f87171")}>−{$(calc.federalTax)}</span></div>
+                  <div style={rowS}><span style={lbl}>Social Security (6.2%)</span><span style={val("#f87171")}>−{$(calc.ssTax)}</span></div>
+                  <div style={rowS}><span style={lbl}>Medicare (1.45%+)</span><span style={val("#f87171")}>−{$(calc.medicareTax)}</span></div>
+                  <div style={rowS}><span style={lbl}>State Tax</span><span style={val("#f87171")}>−{$(stTax)}</span></div>
+                </div>
+                <div style={{ ...rowS, borderBottom: "none", marginTop: 6, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <span style={{ ...lbl, fontWeight: 700, color: "#e2e8f0" }}>Net Pay</span>
+                  <span style={val("#60a5fa")}>{$(netPay)}</span>
+                </div>
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.04)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>Employer Liability</div>
+                  <div style={rowS}><span style={lbl}>Matching SS (6.2%)</span><span style={val("#fb923c")}>{$(calc.employerSS)}</span></div>
+                  <div style={{ ...rowS, borderBottom: "none" }}><span style={lbl}>Matching Medicare (1.45%)</span><span style={val("#fb923c")}>{$(calc.employerMedicare)}</span></div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Btn v="ghost" onClick={onClose}>Cancel</Btn>
+              <Btn v="green" disabled={!calc || calc.gross <= 0} onClick={save}><I name="check" size={15} /> Save Pay Run</Btn>
+            </div>
+          </>
+      }
+    </Modal>
+  );
+}
+
+// ─── Pay Stub Modal ───────────────────────────────────────────────────────────
+function PayStubModal({ run, employee, onClose }) {
+  if (!run || !employee) return null;
+  const stubRow = (label, val, color) => (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
+      <span style={{ fontSize: 13, color: "#64748b" }}>{label}</span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, fontSize: 13, color: color || "#1e293b" }}>{val}</span>
+    </div>
+  );
+  return (
+    <Modal title="Pay Stub" onClose={onClose} w={520}>
+      <style>{`@media print { body * { visibility: hidden !important; } .ocb-stub-paper, .ocb-stub-paper * { visibility: visible !important; } .ocb-stub-paper { position: fixed !important; inset: 0 !important; background: #fff !important; z-index: 99999 !important; padding: 32px !important; } }`}</style>
+      <div className="ocb-stub-paper">
+        <div style={{ background: "#fff", borderRadius: 8, color: "#1e293b", padding: 24 }}>
+          <div style={{ borderBottom: "2px solid #1e293b", paddingBottom: 14, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, color: "#1e293b" }}>PAY STUB</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>OpenClaw Books</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 11, color: "#64748b" }}>Pay Date</div>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#1e293b" }}>{run.date}</div>
+              {run.payPeriodStart && <div style={{ fontSize: 11, color: "#64748b" }}>{run.payPeriodStart} – {run.payPeriodEnd}</div>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>Employee</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{employee.name}</div>
+            {employee.address && <div style={{ fontSize: 12, color: "#64748b" }}>{employee.address}</div>}
+            <div style={{ fontSize: 12, color: "#64748b" }}>SSN: {maskSSN(employee.ssn)} · {employee.filingStatus} · {employee.payFreq}</div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 4 }}>Earnings</div>
+            {run.hours != null && <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>{run.hours} hrs × {$(employee.payRate)}/hr</div>}
+            {stubRow("Gross Pay", $(run.gross), "#16a34a")}
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 4 }}>Deductions</div>
+            {stubRow("Federal Income Tax", `(${$(run.federalTax)})`, "#dc2626")}
+            {stubRow("Social Security (6.2%)", `(${$(run.ssTax)})`, "#dc2626")}
+            {stubRow("Medicare (1.45%+)", `(${$(run.medicareTax)})`, "#dc2626")}
+            {run.stateTax > 0 && stubRow("State Income Tax", `(${$(run.stateTax)})`, "#dc2626")}
+          </div>
+
+          <div style={{ background: "#f8fafc", borderRadius: 6, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", border: "2px solid #1e293b" }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>NET PAY</span>
+            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 800, fontSize: 18, color: "#1d4ed8" }}>{$(run.netPay)}</span>
+          </div>
+
+          {run.notes && <div style={{ marginTop: 12, fontSize: 12, color: "#64748b" }}>Notes: {run.notes}</div>}
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>Employer Tax Liability (not deducted from employee)</div>
+            {stubRow("Employer SS (6.2%)", $(run.employerSS), "#9ca3af")}
+            {stubRow("Employer Medicare (1.45%)", $(run.employerMedicare), "#9ca3af")}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <Btn v="ghost" onClick={onClose}>Close</Btn>
+        <Btn onClick={() => window.print()}><I name="printer" size={14} /> Print</Btn>
+      </div>
+    </Modal>
+  );
 }
