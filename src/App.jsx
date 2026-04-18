@@ -433,7 +433,7 @@ function App() {
         : <ExpV txns={bTxns} year={year} yTxns={yTxns} miles={bMiles} totInc={totInc} totExp={totExp} mileDed={mileDed} biz={biz} bc={bc} />
         }
       </main>
-      {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} onSave={async (t) => { await put("transactions", t); }} onDone={async (savedTxns) => {
+      {modal?.t === "batch-scan" && <BatchScanModal bizId={bizId} existingTxns={bTxns} onSave={async (t) => { await put("transactions", t); }} onDone={async (savedTxns) => {
         await reload();
         close();
         if (!savedTxns?.length) return;
@@ -1865,7 +1865,7 @@ function ReceiptViewer({ receipt, onClose }) {
 
 // ─── FORM MODALS ──────────────────────────────────────────────────────────────
 // ─── Batch Scan Modal ─────────────────────────────────────────────────────────
-function BatchScanModal({ bizId, onSave, onDone, onClose }) {
+function BatchScanModal({ bizId, onSave, onDone, onClose, existingTxns = [] }) {
   const [items, setItems]   = useState([]);   // { file, status, result, error, pct }
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -1939,10 +1939,15 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
           receiptFile: { data, mimeType: item.file.type, filename: item.file.name },
         };
         if (cancelledRef.current) break; // modal closed mid-scan — abort remaining saves
+        // Check if an existing transaction looks like a duplicate (same date + amount ± $0.01)
+        const isDup = existingTxns.some(t =>
+          t.bizId === bizId && t.type === "expense" && t.date === txn.date &&
+          Math.abs((t.amount || 0) - txn.amount) < 0.01
+        );
         await onSave(txn);
         savedFilesRef.current.add(fileKey);
         savedTxnsRef.current.push(txn);
-        setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", result, pct: 1 } : x));
+        setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "done", result, pct: 1, isDup } : x));
       } catch (err) {
         setItems((prev) => prev.map((x, idx) => idx === i ? { ...x, status: "error", error: err.message, pct: 0 } : x));
       }
@@ -1984,11 +1989,12 @@ function BatchScanModal({ bizId, onSave, onDone, onClose }) {
                     </div>
                   )}
                   {item.status === "done" && item.result && (
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       {item.result.vendor && <span>{item.result.vendor}</span>}
                       {item.result.vendor && item.result.amount ? " · " : ""}
                       {item.result.amount ? `$${item.result.amount.toFixed(2)}` : ""}
                       {item.result.date ? ` · ${item.result.date}` : ""}
+                      {item.isDup && <Badge color="#f59e0b">⚠ Possible duplicate</Badge>}
                     </div>
                   )}
                   {item.status === "error" && <div style={{ fontSize: 11, color: "#f87171", marginTop: 2 }}>⚠ {item.error}</div>}
@@ -2270,6 +2276,7 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
   const [f, setF] = useState({ description: prefill.description || "", vendor: prefill.vendor || "", date: prefill.date || td(), amount: prefill.amount || "", category: prefill.category || cats[0].code, notes: prefill.notes || "", scope: prefill.scope || "business", contractorId: prefill.contractorId || "", receiptFile: prefill.receiptFile || null, recurringEnabled: !!(prefill.recurring?.freq), recurringFreq: prefill.recurring?.freq || "monthly" });
   const [viewRcpt, setViewRcpt] = useState(false);
   const [scan, setScan] = useState({ busy: false, pct: 0, status: "", error: "" });
+  const [dupWarning, setDupWarning] = useState(null); // existing txn that looks like a dup
   const attachRef = useRef();
   const initialDate = useRef(prefill.date || null); // snapshot at mount; lets scanReceipt know whether the user has changed the date
   const attachReceipt = async (e) => {
@@ -2380,8 +2387,33 @@ function TxnForm({ type, prefill = {}, editId, bizId, bCons, onSave, onClose }) 
         }
       </Field>
     </div>
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" onClick={() => {
+    {dupWarning && !editId && (
+      <div style={{ marginTop: 16, padding: "12px 14px", background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.35)", borderRadius: 10, fontSize: 13 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#fbbf24", fontWeight: 600, marginBottom: 8 }}>
+          <I name="alert-triangle" size={15} /> Possible duplicate {type}
+        </div>
+        <div style={{ color: "#d1d5db", marginBottom: 10 }}>
+          A {type} already exists: <strong>{dupWarning.vendor || dupWarning.description || "—"}</strong> · <strong>${(dupWarning.amount || 0).toFixed(2)}</strong> on <strong>{dupWarning.date}</strong>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn v="ghost" onClick={() => setDupWarning(null)}>← Go Back</Btn>
+          <Btn v="danger" onClick={() => { setDupWarning(null); const { recurringEnabled, recurringFreq, ...data } = f; onSave({ id: uid(), bizId, type, ...data, amount: parseFloat(data.amount) || 0, recurring: recurringEnabled ? { freq: recurringFreq, nextDue: calcNextDue(data.date, recurringFreq) } : null }); }}>Save Anyway</Btn>
+        </div>
+      </div>
+    )}
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}><Btn v="ghost" onClick={onClose}>Cancel</Btn><Btn v="green" disabled={scan.busy} onClick={async () => {
       if (!f.amount || !f.date) return;
+      if (!editId) {
+        const existing = await getAll("transactions");
+        const amt = parseFloat(f.amount) || 0;
+        const dup = existing.find(t =>
+          t.bizId === bizId && t.type === type && t.date === f.date &&
+          Math.abs((t.amount || 0) - amt) < 0.01 &&
+          ((f.vendor && t.vendor && t.vendor.toLowerCase() === f.vendor.toLowerCase()) ||
+           (f.description && t.description && t.description.toLowerCase() === f.description.toLowerCase()))
+        );
+        if (dup) { setDupWarning(dup); return; }
+      }
       const { recurringEnabled, recurringFreq, ...data } = f;
       onSave({ id: editId || uid(), bizId, type, ...data, amount: parseFloat(data.amount) || 0, recurring: recurringEnabled ? { freq: recurringFreq, nextDue: calcNextDue(data.date, recurringFreq) } : null });
     }}><I name="check" size={15} /> {editId ? "Update" : "Save"}</Btn></div>
